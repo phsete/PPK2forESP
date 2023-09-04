@@ -1,6 +1,8 @@
 from nicegui import ui
 from typing import List
 import uuid
+from client import myclient
+import asyncio
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None) -> None:
@@ -93,7 +95,7 @@ def add_node_to_container(node: Node):
             ui.label("TYPE: " + ("Pi" if node.isPi else "ESP"))
             ui.label("IP: " + node.ip)
             with ui.row():
-                with ui.button(icon='delete', on_click=lambda: remove_node(node, tempCard)):
+                with ui.button(icon='delete', on_click=lambda: remove_node(node, tempCard, container)):
                     ui.tooltip("Remove this Node")
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
@@ -103,7 +105,7 @@ def update_nodes():
     for node in nodes:
         add_node_to_container(node)
 
-def remove_node(node: Node, card: ui.card):
+def remove_node(node: Node, card: ui.card, container):
     ui.notify(f"Node {node.name} removed!")
     nodes.remove(node)
     update_diagram()
@@ -124,7 +126,7 @@ def save_to_file():
     file.close()
     ui.notify("Saved to File 'nodes.save'!")
 
-def load_from_file():
+def load_from_file(container):
     remove_all_nodes()
     container.clear()
     file = open("nodes.save", "r")
@@ -133,12 +135,27 @@ def load_from_file():
     file.close()
     ui.notify("Loaded from File 'nodes.save'!")
 
+async def run_server():
+    server = await asyncio.start_server(handle_client, 'localhost', 15555)
+
+async def handle_client(reader, writer):
+    request = None
+    print("Test")
+    while request != 'quit':
+        request = (await reader.read(255)).decode('utf8')
+        response = str(eval(request)) + '\n'
+        writer.write(response.encode('utf8'))
+        await writer.drain()
+    writer.close()
+
+async def send_message():
+    reader, writer = await asyncio.open_connection("localhost", 15555)
+
 add_dialog = create_node_dialog()
 
 with ui.header():
     ui.label("Testsuit for ESP32 Network")
-
-
+    ui.button("Test", on_click=send_message)
 
 with ui.splitter().style("position: relative; min-height: 500px; margin: auto;") as splitter:
     with splitter.before:
@@ -153,7 +170,9 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Add a new Node")
     with ui.button(icon="save", on_click=save_to_file):
         ui.tooltip("Save to File 'nodes.save'")
-    with ui.button(icon="file_open", on_click=load_from_file):
+    with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
 
 ui.run(title="Testsuit")
+
+asyncio.run(run_server())
