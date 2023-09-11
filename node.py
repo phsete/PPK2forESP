@@ -9,7 +9,7 @@ async def process_message(message):
     if data["type"] == "start_test":
         print("Starting Test ...")
         collected_power_samples, collected_data_samples = log.start_test()
-        return json.dumps({"power_samples": collected_power_samples, "data_samples": collected_data_samples})
+        return json.dumps({"power_samples": collected_power_samples._getvalue(), "data_samples": collected_data_samples_getvalue()})
     else:
         return "OK"
 
