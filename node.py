@@ -8,15 +8,16 @@ async def process_message(message):
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
         print("Starting Test ...")
-        log.start_test()
+        return log.start_test()
+    else:
+        return "OK"
 
 async def respond(websocket):
     incoming = await websocket.recv()
     print(f"<<< {incoming}")
 
-    await process_message(incoming)
+    outgoing = await process_message(incoming)
 
-    outgoing = "OK"
     await websocket.send(outgoing)
     print(f">>> {outgoing}")
 

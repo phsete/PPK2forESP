@@ -2,23 +2,23 @@ import serial
 from serial.tools import list_ports
 from ppk2_api.ppk2_api import PPK2_API
 import time
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from multiprocessing import Process, Manager
 from serial.tools import list_ports
 
 def get_time_in_ms():
     return int(time.time() * 1000)
 
-def plot_graph(averages, data_samples):
-    x_val = [x[0] for x in averages]
-    y_val = [x[1] for x in averages]
-    print(x_val, y_val)
-    plt.plot(x_val, y_val)
-    plt.ylabel('Power [uA]')
-    plt.xlabel('Time after boot [ms]')
-    for data in data_samples:
-        plt.axvline(data[0], color='r', ls="--", lw=0.5)
-    plt.show()
+# def plot_graph(averages, data_samples):
+#     x_val = [x[0] for x in averages]
+#     y_val = [x[1] for x in averages]
+#     print(x_val, y_val)
+#     plt.plot(x_val, y_val)
+#     plt.ylabel('Power [uA]')
+#     plt.xlabel('Time after boot [ms]')
+#     for data in data_samples:
+#         plt.axvline(data[0], color='r', ls="--", lw=0.5)
+#     plt.show()
 
 def find_serial_device(device_signature: str):
     candidates = list(list_ports.grep(device_signature))
@@ -41,8 +41,8 @@ def get_serial_device(device_signature: str):
 
     return serial_port
 
-def start_sampling(is_esp32_powered, is_esp32_done, collected_power_samples, shared_time):
-    ppk2_test = PPK2_API("/dev/ttyACM0")  # serial port will be different for you
+def start_sampling(ppk2_port, is_esp32_powered, is_esp32_done, collected_power_samples, shared_time):
+    ppk2_test = PPK2_API(ppk2_port)  # serial port will be different for you
     ppk2_test.get_modifiers()
     ppk2_test.use_ampere_meter()  # set source meter mode
     ppk2_test.set_source_voltage(3300)  # set source voltage in mV
@@ -99,13 +99,14 @@ def start_test():
         collected_power_samples = manager.list()
         collected_data_samples = manager.list()
         shared_time = manager.Value('i', get_time_in_ms())
-        sampler = Process(target=start_sampling, args=(is_esp32_powered, is_esp32_done, collected_power_samples, shared_time))
+        sampler = Process(target=start_sampling, args=(ppk2_port, is_esp32_powered, is_esp32_done, collected_power_samples, shared_time))
         logger = Process(target=log_esp32, args=(is_esp32_powered, is_esp32_done, collected_data_samples, shared_time))
         sampler.start()
         logger.start()
         sampler.join()
         logger.join()
-        plot_graph(collected_power_samples, collected_data_samples)
+        # plot_graph(collected_power_samples, collected_data_samples)
+        return (collected_power_samples, collected_data_samples)
     else:
         print("Did not find PPK2 Serial Device!")
 

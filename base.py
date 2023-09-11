@@ -114,6 +114,8 @@ def add_node_to_container(node: Node):
                     ui.tooltip("Remove this Node")
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
+                with ui.button(icon='play_arrow', on_click=lambda: send_json_data("ws://129.217.50.15:8765", {"type": "start_test"})):
+                    ui.tooltip("Run test")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=node.connect_to_device):
                         ui.tooltip("Connect Node to Device")
@@ -174,7 +176,7 @@ add_dialog = create_node_dialog()
 
 with ui.header():
     ui.label("Testsuit for Sensor Network")
-    ui.button("Test", on_click=lambda:send_json_data("ws://localhost:8765", {"name": "Test"}))
+    ui.button("Test", on_click=lambda:send_json_data("ws://129.217.50.15:8765", {"type": "start_test"}))
 
 with ui.splitter().style("position: relative; min-height: 500px; margin: auto;") as splitter:
     with splitter.before:
