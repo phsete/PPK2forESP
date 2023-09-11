@@ -146,7 +146,7 @@ async def send_message(uri, message):
 add_dialog = create_node_dialog()
 
 with ui.header():
-    ui.label("Testsuit for ESP32 Network")
+    ui.label("Testsuit for Sensor Network")
     ui.button("Test", on_click=lambda:send_message("ws://localhost:8765", "Test"))
 
 with ui.splitter().style("position: relative; min-height: 500px; margin: auto;") as splitter:
