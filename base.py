@@ -2,7 +2,7 @@ from nicegui import ui
 from typing import List
 import uuid
 from websockets import client
-import asyncio
+import json
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None) -> None:
@@ -11,16 +11,28 @@ class Node:
             self.name = name
             self.ip = ip
             self.isPi = isPi
+            self.is_connected = False
         else:
             strings = save_string[1:-2].split(",")
             self.uuid = uuid.UUID(strings[0])
             self.name = strings[1]
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
+            self.is_connected = False
     def __str__(self) -> str:
         return f"({self.uuid},{self.name},{self.ip},{self.isPi})"
     def __repr__(self):
         return str(self)
+    async def connect_to_device(self):
+        ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
+        result = await send_json_data(f"ws://{self.ip}:8765", {"type": "connection_test"})
+        if result == "OK":
+            self.is_connected = True
+            update_diagram()
+            update_nodes()
+            ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
+        else:
+            ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
 
 nodes : List[Node] = []
 
@@ -62,7 +74,9 @@ def generate_mermaid_string():
         result += node_string.format(id=node.uuid, name=node.name, ip=node.ip, isPi=("Pi" if node.isPi else "ESP"))
     for node in nodes:
         for node2 in nodes[nodes.index(node)+1:]:
-            result += f'''{node.uuid} <--> {node2.uuid};\n'''
+            result += f'''{node.uuid}{":::connected" if node.is_connected else ":::unconnected"} <--> {node2.uuid}{":::connected" if node2.is_connected else ":::unconnected"};\n'''
+    result += "classDef connected fill:#0f0\n"
+    result += "classDef unconnected fill:#f00\n"
     return result
 
 def update_diagram():
@@ -84,6 +98,7 @@ def update_node(node: Node, name: str, ip: str, isPi: bool, dialog: ui.dialog):
     node.name = name
     node.ip = ip
     node.isPi = isPi
+    node.is_connected = False
     dialog.close()
     update_diagram()
     update_nodes()
@@ -99,6 +114,9 @@ def add_node_to_container(node: Node):
                     ui.tooltip("Remove this Node")
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
+                if not node.is_connected:
+                    with ui.button(icon='link', on_click=node.connect_to_device):
+                        ui.tooltip("Connect Node to Device")
 
 def update_nodes():
     container.clear()
@@ -135,19 +153,26 @@ def load_from_file(container):
     file.close()
     ui.notify("Loaded from File 'nodes.save'!")
 
-async def send_message(uri, message):
-    async with client.connect(uri) as websocket:
-        await websocket.send(message)
-        print(f">>> {message}")
+async def send_json_data(uri, data) -> str:
+    message = json.dumps(data)
+    try:
+        async with client.connect(uri) as websocket:
+            await websocket.send(message)
+            print(f">>> {message}")
 
-        response = await websocket.recv()
-        print(f"<<< {response}")
+            response = await websocket.recv()
+            print(f"<<< {response}")
+            return response
+    except OSError:
+        return "OSERR"
+    except:
+        return "ERR"
 
 add_dialog = create_node_dialog()
 
 with ui.header():
     ui.label("Testsuit for Sensor Network")
-    ui.button("Test", on_click=lambda:send_message("ws://localhost:8765", "Test"))
+    ui.button("Test", on_click=lambda:send_json_data("ws://localhost:8765", {"name": "Test"}))
 
 with ui.splitter().style("position: relative; min-height: 500px; margin: auto;") as splitter:
     with splitter.before:

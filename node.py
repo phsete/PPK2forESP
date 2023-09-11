@@ -1,11 +1,18 @@
 import asyncio
 import websockets
+import json
+
+async def process_message(message):
+    data = json.loads(message)
+    print(f"received message of type {data['type']}")
 
 async def respond(websocket):
     incoming = await websocket.recv()
     print(f"<<< {incoming}")
 
-    outgoing = "Hello from the node!"
+    await process_message(incoming)
+
+    outgoing = "OK"
     await websocket.send(outgoing)
     print(f">>> {outgoing}")
 
