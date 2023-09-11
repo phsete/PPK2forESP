@@ -1,10 +1,14 @@
 import asyncio
 import websockets
 import json
+import log
 
 async def process_message(message):
     data = json.loads(message)
     print(f"received message of type {data['type']}")
+    if data["type"] == "start_test":
+        print("Starting Test ...")
+        log.start_test()
 
 async def respond(websocket):
     incoming = await websocket.recv()

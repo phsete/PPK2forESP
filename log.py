@@ -91,19 +91,23 @@ def log_esp32(is_esp32_powered, is_esp32_done, collected_data_samples, shared_ti
 ppk2_port = find_serial_device("PPK2")
 print(ppk2_port)   
 
-if ppk2_port != None:
-    manager = Manager()
-    is_esp32_powered = manager.Value('b', False)
-    is_esp32_done = manager.Value('b', False)
-    collected_power_samples = manager.list()
-    collected_data_samples = manager.list()
-    shared_time = manager.Value('i', get_time_in_ms())
-    sampler = Process(target=start_sampling, args=(is_esp32_powered, is_esp32_done, collected_power_samples, shared_time))
-    logger = Process(target=log_esp32, args=(is_esp32_powered, is_esp32_done, collected_data_samples, shared_time))
-    sampler.start()
-    logger.start()
-    sampler.join()
-    logger.join()
-    plot_graph(collected_power_samples, collected_data_samples)
-else:
-    print("Did not find PPK2 Serial Device!")
+def start_test():
+    if ppk2_port != None:
+        manager = Manager()
+        is_esp32_powered = manager.Value('b', False)
+        is_esp32_done = manager.Value('b', False)
+        collected_power_samples = manager.list()
+        collected_data_samples = manager.list()
+        shared_time = manager.Value('i', get_time_in_ms())
+        sampler = Process(target=start_sampling, args=(is_esp32_powered, is_esp32_done, collected_power_samples, shared_time))
+        logger = Process(target=log_esp32, args=(is_esp32_powered, is_esp32_done, collected_data_samples, shared_time))
+        sampler.start()
+        logger.start()
+        sampler.join()
+        logger.join()
+        plot_graph(collected_power_samples, collected_data_samples)
+    else:
+        print("Did not find PPK2 Serial Device!")
+
+if __name__ == '__main__':
+    start_test()
