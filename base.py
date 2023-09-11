@@ -163,9 +163,11 @@ async def send_json_data(uri, data) -> str:
             response = await websocket.recv()
             print(f"<<< {response}")
             return response
-    except OSError:
+    except OSError as error:
+        print(error)
         return "OSERR"
-    except:
+    except Exception as error:
+        print(error)
         return "ERR"
 
 add_dialog = create_node_dialog()
