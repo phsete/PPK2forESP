@@ -3,6 +3,7 @@ from typing import List
 import uuid
 from websockets import client
 import json
+from matplotlib import pyplot as plt
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None) -> None:
@@ -12,6 +13,8 @@ class Node:
             self.ip = ip
             self.isPi = isPi
             self.is_connected = False
+            self.averages = []
+            self.data_samples = []
         else:
             strings = save_string[1:-2].split(",")
             self.uuid = uuid.UUID(strings[0])
@@ -19,6 +22,8 @@ class Node:
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
             self.is_connected = False
+            self.averages = []
+            self.data_samples = []
     def __str__(self) -> str:
         return f"({self.uuid},{self.name},{self.ip},{self.isPi})"
     def __repr__(self):
@@ -33,6 +38,10 @@ class Node:
             ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
         else:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def start_test(self):
+        result = json.loads(await send_json_data("ws://129.217.50.15:8765", {"type": "start_test"}))
+        self.averages = result["power_samples"]
+        self.data_samples = result["data_samples"]
 
 nodes : List[Node] = []
 
@@ -114,7 +123,7 @@ def add_node_to_container(node: Node):
                     ui.tooltip("Remove this Node")
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
-                with ui.button(icon='play_arrow', on_click=lambda: send_json_data("ws://129.217.50.15:8765", {"type": "start_test"})):
+                with ui.button(icon='play_arrow', on_click=node.start_test):
                     ui.tooltip("Run test")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=node.connect_to_device):
@@ -171,12 +180,27 @@ async def send_json_data(uri, data) -> str:
     except Exception as error:
         print(error)
         return "ERR"
+    
+async def update_plots():
+    container_plots.clear()
+    for node in nodes:
+        with container_plots:
+            with ui.card() as tempCard:
+                ui.label(node.name)
+                with ui.pyplot(close=False, num="Test") as debug_plot:
+                    x_val = [x[0] for x in node.averages]
+                    y_val = [x[1] for x in node.averages]
+                    print(x_val, y_val)
+                    plt.plot(x_val, y_val)
+                    plt.ylabel('Power [uA]')
+                    plt.xlabel('Time after boot [ms]')
+                    for data in node.data_samples:
+                        plt.axvline(data[0], color='r', ls="--", lw=0.5)
 
 add_dialog = create_node_dialog()
 
 with ui.header():
     ui.label("Testsuit for Sensor Network")
-    ui.button("Test", on_click=lambda:send_json_data("ws://129.217.50.15:8765", {"type": "start_test"}))
 
 with ui.splitter().style("position: relative; min-height: 500px; margin: auto;") as splitter:
     with splitter.before:
@@ -193,5 +217,11 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Save to File 'nodes.save'")
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
+    with ui.button(icon="refresh", on_click=update_plots):
+        ui.tooltip("Update Plots")
+
+ui.separator().style("top: 50px; bottom: 50px;")
+
+container_plots = ui.row()
 
 ui.run(title="Testsuit")
