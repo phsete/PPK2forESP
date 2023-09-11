@@ -8,7 +8,8 @@ async def process_message(message):
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
         print("Starting Test ...")
-        return log.start_test()
+        collected_power_samples, collected_data_samples = log.start_test()
+        return json.dumps({"power_samples": collected_power_samples, "data_samples": collected_data_samples})
     else:
         return "OK"
 
