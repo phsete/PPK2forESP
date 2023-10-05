@@ -41,7 +41,7 @@ def get_serial_device(device_signature: str):
 
     return serial_port
 
-def start_sampling(ppk2_port, is_esp32_powered, is_esp32_done, collected_power_samples, shared_time):
+def start_sampling():
     ppk2_test = PPK2_API(ppk2_port)  # serial port will be different for you
     ppk2_test.get_modifiers()
     ppk2_test.use_ampere_meter()  # set source meter mode
@@ -51,24 +51,13 @@ def start_sampling(ppk2_port, is_esp32_powered, is_esp32_done, collected_power_s
     power_on = False
     # read measured values in a for loop like this:
     while not is_esp32_done.value:
-        read_data = ppk2_test.get_data()
-        if not power_on:
-            power_on = True
-            ppk2_test.toggle_DUT_power("ON")
-            is_esp32_powered.value = True
-        if read_data != b'':
-            samples = ppk2_test.get_samples(read_data)
-            power_samples = samples[0]
-            average = sum(power_samples)/len(power_samples)
-            collected_power_samples.append((get_time_in_ms()-shared_time.value, average))
-            # print(f"Average of {len(power_samples)} samples is: {average}uA")
-        time.sleep(0.00001)  # lower time between sampling -> less samples read in one sampling period
+        do_test_cycle(ppk2_test=ppk2_test)
 
     ppk2_test.stop_measuring()
 
     # plot_power_averages(all_power_averages)
 
-def log_esp32(is_esp32_powered, is_esp32_done, collected_data_samples, shared_time):
+def log_esp32():
     while not is_esp32_powered.value:
         time.sleep(0.1)
         print("waiting for esp32 to be started")
@@ -86,21 +75,10 @@ def log_esp32(is_esp32_powered, is_esp32_done, collected_data_samples, shared_ti
     serial_device.close()
     is_esp32_done.value = True
 
-# MAIN ENTRY POINT
-
-ppk2_port = find_serial_device("PPK2")
-print(ppk2_port)   
-
 def start_test():
     if ppk2_port != None:
-        manager = Manager()
-        is_esp32_powered = manager.Value('b', False)
-        is_esp32_done = manager.Value('b', False)
-        collected_power_samples = manager.list()
-        collected_data_samples = manager.list()
-        shared_time = manager.Value('i', get_time_in_ms())
-        sampler = Process(target=start_sampling, args=(ppk2_port, is_esp32_powered, is_esp32_done, collected_power_samples, shared_time))
-        logger = Process(target=log_esp32, args=(is_esp32_powered, is_esp32_done, collected_data_samples, shared_time))
+        sampler = Process(target=start_sampling)
+        logger = Process(target=log_esp32)
         sampler.start()
         logger.start()
         sampler.join()
@@ -109,6 +87,31 @@ def start_test():
         return (collected_power_samples, collected_data_samples)
     else:
         print("Did not find PPK2 Serial Device!")
+
+def do_test_cycle(ppk2_test):
+    read_data = ppk2_test.get_data()
+    if not power_on:
+        power_on = True
+        ppk2_test.toggle_DUT_power("ON")
+        is_esp32_powered.value = True
+    if read_data != b'':
+        samples = ppk2_test.get_samples(read_data)
+        power_samples = samples[0]
+        average = sum(power_samples)/len(power_samples)
+        collected_power_samples.append((get_time_in_ms()-shared_time.value, average))
+        # print(f"Average of {len(power_samples)} samples is: {average}uA")
+    time.sleep(0.00001)  # lower time between sampling -> less samples read in one sampling period
+
+# MAIN ENTRY POINT
+
+ppk2_port = find_serial_device("PPK2")
+print(ppk2_port)   
+manager = Manager()
+is_esp32_powered = manager.Value('b', False)
+is_esp32_done = manager.Value('b', False)
+collected_power_samples = manager.list()
+collected_data_samples = manager.list()
+shared_time = manager.Value('i', get_time_in_ms())
 
 if __name__ == '__main__':
     start_test()
