@@ -34,7 +34,7 @@ def get_serial_device(device_signature: str):
     while not (port := find_serial_device(device_signature)):
         time.sleep(0.1)
         print("waiting for serial port to be available ...")
-    serial_port = serial.Serial(port)
+    serial_port = serial.Serial(port, baudrate=115200)
     while(not serial_port.is_open):
         time.sleep(0.1)
         print("waiting for serial port to be open ...")
@@ -42,18 +42,16 @@ def get_serial_device(device_signature: str):
     return serial_port
 
 def start_sampling():
-    ppk2_test = PPK2_API(ppk2_port)  # serial port will be different for you
-    ppk2_test.get_modifiers()
-    ppk2_test.use_ampere_meter()  # set source meter mode
-    ppk2_test.set_source_voltage(3300)  # set source voltage in mV
     ppk2_test.start_measuring()  # start measuring
 
+    print("starting to sample ...")
     power_on = False
     # read measured values in a for loop like this:
     while not is_esp32_done.value:
-        do_test_cycle(ppk2_test=ppk2_test)
+        do_test_cycle(ppk2_test=ppk2_test, power_on=power_on)
 
     ppk2_test.stop_measuring()
+    ppk2_test.toggle_DUT_power("OFF")
 
     # plot_power_averages(all_power_averages)
 
@@ -61,21 +59,25 @@ def log_esp32():
     while not is_esp32_powered.value:
         time.sleep(0.1)
         print("waiting for esp32 to be started")
-    serial_device = get_serial_device("303a:1001") # ESP32-C6 Devkit-M has Vendor ID 303a and Product ID 1001
+    serial_device = get_serial_device("10c4:ea60") # ESP32-C6 Devkit-M has Vendor ID 303a and Product ID 1001 // UART Bridge: 10c4:ea60
     print("Serial device 0:", serial_device)         # check which port was really used
     # print("Serial device 1:" + serial_device_1.name)         # check which port was really used
-    time.sleep(1)
-    for i in range(0, 10):
-        line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-        stripped_line = line.decode('utf-8').strip()
-        collected_data_samples.append((get_time_in_ms()-shared_time.value, stripped_line))
-        print(stripped_line)
-        time.sleep(0.001)
+    
+    # Wait for the ESP to be ready (when it outputs "READY" to its serial)
+    while((line := serial_device.readline()) != b'READY\r\n'):
+        pass
+    print("READY")
+    line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
+    stripped_line = line.decode('utf-8').strip()
+    collected_data_samples.append((get_time_in_ms()-shared_time.value, stripped_line))
+    print("LINE: ", stripped_line)
 
     serial_device.close()
     is_esp32_done.value = True
 
 def start_test():
+    print("Starting Test ...")
+    init_values()
     if ppk2_port != None:
         sampler = Process(target=start_sampling)
         logger = Process(target=log_esp32)
@@ -88,7 +90,8 @@ def start_test():
     else:
         print("Did not find PPK2 Serial Device!")
 
-def do_test_cycle(ppk2_test):
+def do_test_cycle(ppk2_test, power_on):
+    # print("Test Cycle ...")
     read_data = ppk2_test.get_data()
     if not power_on:
         power_on = True
@@ -102,10 +105,22 @@ def do_test_cycle(ppk2_test):
         # print(f"Average of {len(power_samples)} samples is: {average}uA")
     time.sleep(0.00001)  # lower time between sampling -> less samples read in one sampling period
 
+def init_values():
+    is_esp32_powered.value = False
+    is_esp32_done.value = False
+    del collected_power_samples[:]
+    del collected_data_samples[:]
+    shared_time.value = get_time_in_ms()
+
 # MAIN ENTRY POINT
 
 ppk2_port = find_serial_device("PPK2")
 print(ppk2_port)   
+ppk2_test = PPK2_API(ppk2_port)  # serial port will be different for you
+ppk2_test.get_modifiers()
+ppk2_test.use_ampere_meter()  # set source meter mode
+ppk2_test.set_source_voltage(3300)  # set source voltage in mV
+
 manager = Manager()
 is_esp32_powered = manager.Value('b', False)
 is_esp32_done = manager.Value('b', False)
