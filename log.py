@@ -5,6 +5,7 @@ import time
 # import matplotlib.pyplot as plt
 from multiprocessing import Process, Manager
 from serial.tools import list_ports
+import esptool
 
 def get_time_in_ms():
     return int(time.time() * 1000)
@@ -63,6 +64,15 @@ def log_esp32():
     print("Serial device 0:", serial_device)         # check which port was really used
     # print("Serial device 1:" + serial_device_1.name)         # check which port was really used
     
+    # Flash ESP before test run
+    try:
+        esptool.main(["-p", serial_device, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"])
+        # It worked! Display a nice green message
+        print("Flash worked!")
+    except:
+        # It failed, just wait a second a try again
+        print("Flash failed!")
+
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
     while((line := serial_device.readline()) != b'READY\r\n'):
         pass

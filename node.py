@@ -2,6 +2,11 @@ import asyncio
 import websockets
 import json
 import log
+import requests
+
+logger_version = "latest"
+url_latest = "https://github.com/phsete/ESPNOWLogger/releases/latest/download/sender.bin"
+url_version = "https://github.com/phsete/ESPNOWLogger/releases/download/" + logger_version + "/sender.bin"
 
 async def process_message(message):
     data = json.loads(message)
@@ -27,4 +32,16 @@ async def main():
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
+    if(logger_version == "latest"):
+        url = url_latest
+    else:
+        url = url_version
+        
+    response = requests.get(url)
+    if(response.ok):
+        with open("firmware.bin", mode="wb") as file:
+            file.write(response.content)
+    else:
+        exit("Download failed!")
+
     asyncio.run(main())

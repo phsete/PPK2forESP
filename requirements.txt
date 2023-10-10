@@ -2,3 +2,6 @@ nicegui
 ppk2-api
 pyserial
 websockets
+esptool
+requests
+matplotlib
