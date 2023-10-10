@@ -114,7 +114,8 @@ def init_values():
 
 # MAIN ENTRY POINT
 
-ppk2_port = find_serial_device("PPK2")
+if((ppk2_port := find_serial_device("PPK2")) == None):
+    exit("ERROR: No PPK2 device found!")
 print(ppk2_port)   
 ppk2_test = PPK2_API(ppk2_port)  # serial port will be different for you
 ppk2_test.get_modifiers()
