@@ -1,2 +1,4 @@
 nicegui
 ppk2-api
+pyserial
+websockets
