@@ -4,6 +4,7 @@ import uuid
 from websockets import client
 import json
 from matplotlib import pyplot as plt
+import configparser
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None) -> None:
@@ -30,7 +31,7 @@ class Node:
         return str(self)
     async def connect_to_device(self):
         ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
-        result = await send_json_data(f"ws://{self.ip}:8765", {"type": "connection_test"})
+        result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "connection_test"})
         if result == "OK":
             self.is_connected = True
             update_diagram()
@@ -39,7 +40,7 @@ class Node:
         else:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def start_test(self):
-        result = json.loads(await send_json_data(f"ws://{self.ip}:8765", {"type": "start_test"}))
+        result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test"}))
         self.averages = result["power_samples"]
         self.data_samples = result["data_samples"]
 
@@ -196,6 +197,9 @@ async def update_plots():
                     plt.xlabel('Time after boot [ms]')
                     for data in node.data_samples:
                         plt.axvline(data[0], color='r', ls="--", lw=0.5)
+
+config = configparser.ConfigParser()
+config.read("config.toml")
 
 add_dialog = create_node_dialog()
 

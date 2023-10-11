@@ -1,0 +1,6 @@
+[general]
+WebsocketPort = 8765
+
+[node]
+LoggerVersion = v0.1.2
+ESP32VidPid = 10c4:ea60
