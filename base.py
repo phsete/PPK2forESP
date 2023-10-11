@@ -39,7 +39,7 @@ class Node:
         else:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def start_test(self):
-        result = json.loads(await send_json_data("ws://129.217.50.15:8765", {"type": "start_test"}))
+        result = json.loads(await send_json_data(f"ws://{self.ip}:8765", {"type": "start_test"}))
         self.averages = result["power_samples"]
         self.data_samples = result["data_samples"]
 
