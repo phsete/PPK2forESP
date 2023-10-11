@@ -57,12 +57,8 @@ def start_sampling():
     # plot_power_averages(all_power_averages)
 
 def log_esp32():
-    while not is_esp32_powered.value:
-        time.sleep(0.1)
-        print("waiting for esp32 to be started")
     serial_device = get_serial_device("10c4:ea60") # ESP32-C6 Devkit-M has Vendor ID 303a and Product ID 1001 // UART Bridge: 10c4:ea60
     print("Serial device 0:", serial_device)         # check which port was really used
-    # print("Serial device 1:" + serial_device_1.name)         # check which port was really used
     
     # Flash ESP before test run
     command = ["-p", serial_device.port, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"]
