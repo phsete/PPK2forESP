@@ -65,13 +65,20 @@ def log_esp32():
     # print("Serial device 1:" + serial_device_1.name)         # check which port was really used
     
     # Flash ESP before test run
+    command = ["-p", serial_device.port, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"]
+    print('Using command %s' % ' '.join(command))
     try:
-        esptool.main(["-p", serial_device, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"])
-        # It worked! Display a nice green message
+        esptool.main(command)
         print("Flash worked!")
     except:
-        # It failed, just wait a second a try again
         print("Flash failed!")
+
+    # Power Cycle ESP32
+    serial_device.close()
+    ppk2_test.toggle_DUT_power("OFF")
+    time.sleep(0.5)
+    ppk2_test.toggle_DUT_power("ON")
+    serial_device = get_serial_device("10c4:ea60")
 
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
     while((line := serial_device.readline()) != b'READY\r\n'):
