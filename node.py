@@ -4,16 +4,16 @@ import json
 import log
 import requests
 
-logger_version = "latest"
-url_latest = "https://github.com/phsete/ESPNOWLogger/releases/latest/download/sender.bin"
-url_version = "https://github.com/phsete/ESPNOWLogger/releases/download/" + logger_version + "/sender.bin"
+ESP32_VID_PID = "10c4:ea60"
+LOGGER_VERSION = "latest"
+URL_LATEST = "https://github.com/phsete/ESPNOWLogger/releases/latest/download/sender.bin"
+URL_VERSION = "https://github.com/phsete/ESPNOWLogger/releases/download/" + LOGGER_VERSION + "/sender.bin"
 
 async def process_message(message):
     data = json.loads(message)
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
-        print("Starting Test ...")
-        (collected_power_samples, collected_data_samples) = log.start_test()
+        (collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=ESP32_VID_PID, flash=True)
         return json.dumps({"power_samples": collected_power_samples._getvalue(), "data_samples": collected_data_samples._getvalue()})
     else:
         return "OK"
@@ -32,10 +32,10 @@ async def main():
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
-    if(logger_version == "latest"):
-        url = url_latest
+    if(LOGGER_VERSION == "latest"):
+        url = URL_LATEST
     else:
-        url = url_version
+        url = URL_VERSION
         
     response = requests.get(url)
     if(response.ok):
