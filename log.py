@@ -1,33 +1,8 @@
-import serial
-from serial.tools import list_ports
 from ppk2_api.ppk2_api import PPK2_API
-import time
 from multiprocessing import Process, Manager
 import esptool
-
-def get_time_in_ms():
-    return int(time.time() * 1000)
-
-def find_serial_device(device_signature: str):
-    candidates = list(list_ports.grep(device_signature))
-    if not candidates:
-        return None
-    if len(candidates) > 1:
-        exit(f'More than one device with signature {device_signature} found. Please remove every ESP32 device that is not going to be used.')
-    return candidates[0].device
-
-def get_serial_device(device_signature: str):
-    while not (port := find_serial_device(device_signature)):
-        time.sleep(0.1)
-        print("waiting for serial port to be available ...")
-
-    serial_port = serial.Serial(port, baudrate=115200)
-
-    while(not serial_port.is_open):
-        time.sleep(0.1)
-        print("waiting for serial port to be open ...")
-
-    return serial_port
+import time
+import helper
 
 def start_sampling(ppk2_device):
     print("Sampling ESP32 with PPK2 ...")
@@ -48,7 +23,7 @@ def flash_esp32(vid_pid, ppk2_device=None):
     print("Flashing ESP32 ...")
     if ppk2_device:
         ppk2_device.toggle_DUT_power("ON")
-    serial_device = get_serial_device(vid_pid)
+    serial_device = helper.get_serial_device(vid_pid)
     
     command = ["-p", serial_device.port, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"]
     print('Using command %s' % ' '.join(command))
@@ -64,14 +39,14 @@ def flash_esp32(vid_pid, ppk2_device=None):
 
 def log_esp32(vid_pid):
     print("Logging ESP32 ...")
-    serial_device = get_serial_device(vid_pid)
+    serial_device = helper.get_serial_device(vid_pid)
 
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
     while((line := serial_device.readline()) != b'READY\r\n'):
         pass
     line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
     stripped_line = line.decode('utf-8').strip()
-    collected_data_samples.append((get_time_in_ms()-shared_time.value, stripped_line))
+    collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, stripped_line))
 
     serial_device.close()
     is_esp32_done.value = True
@@ -79,7 +54,7 @@ def log_esp32(vid_pid):
 
 def get_PPK2():
     print("Looking for PPK2 device ...")
-    if((ppk2_port := find_serial_device("PPK2")) == None):
+    if((ppk2_port := helper.find_serial_device("PPK2")) == None):
         exit("ERROR: No PPK2 device found!")
     ppk2 = PPK2_API(ppk2_port)
     ppk2.get_modifiers()
@@ -116,7 +91,7 @@ def do_test_cycle(ppk2_device):
         samples = ppk2_device.get_samples(read_data)
         power_samples = samples[0]
         average = sum(power_samples)/len(power_samples)
-        collected_power_samples.append((get_time_in_ms()-shared_time.value, average))
+        collected_power_samples.append((helper.get_time_in_ms()-shared_time.value, average))
     time.sleep(0.00001)  # lower time between sampling -> less samples read in one sampling period
 
 def init_values():
@@ -124,7 +99,7 @@ def init_values():
     is_esp32_done.value = False
     del collected_power_samples[:]
     del collected_data_samples[:]
-    shared_time.value = get_time_in_ms()
+    shared_time.value = helper.get_time_in_ms()
 
 # MAIN ENTRY POINT
 
@@ -132,7 +107,7 @@ manager = Manager()
 is_esp32_done = manager.Value('b', False)
 collected_power_samples = manager.list()
 collected_data_samples = manager.list()
-shared_time = manager.Value('i', get_time_in_ms())
+shared_time = manager.Value('i', helper.get_time_in_ms())
 
 if __name__ == '__main__':
     start_test(esp32_vid_pid="10c4:ea60", flash=False)
