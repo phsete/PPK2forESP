@@ -10,7 +10,7 @@ def find_serial_device(device_signature: str):
     if not candidates:
         return None
     if len(candidates) > 1:
-        exit(f'More than one device with signature {device_signature} found. Please remove every ESP32 device that is not going to be used.')
+        exit(f'More than one device with signature {device_signature} found. Please remove every device that is not going to be used.')
     return candidates[0].device
 
 def get_serial_device(device_signature: str):
