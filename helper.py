@@ -9,7 +9,7 @@ config = configparser.ConfigParser()
 config.read("config.toml")
 
 def get_time_in_ms():
-    return int(time.time() * 1000)
+    return time.time() * 1000
 
 def find_serial_device(device_signature: str):
     candidates = list(list_ports.grep(device_signature))

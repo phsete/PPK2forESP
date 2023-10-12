@@ -7,17 +7,22 @@ import helper
 def start_sampling(ppk2_device):
     print("Sampling ESP32 with PPK2 ...")
 
-    ppk2_device.toggle_DUT_power("ON")
+    values = []
 
-    ppk2_device.start_measuring()  # start measuring
-
-    # read measured values in a for loop like this:
+    # read measured values
     while not is_esp32_done.value:
-        do_test_cycle(ppk2_device=ppk2_device)
+        values.append((helper.get_time_in_ms(), ppk2_device.get_data()))
+        time.sleep(1/100000)
 
-    ppk2_device.stop_measuring()
-    print("Finished sampling -> powering down ESP32")
-    ppk2_device.toggle_DUT_power("OFF")
+    print("Finished sampling -> calculating values ...")
+
+    for timestamp, value in values:
+        if value != b'':
+            samples, raw_output = ppk2_device.get_samples(value)
+            average = sum(samples)/len(samples)
+            collected_power_samples.append((timestamp-shared_time.value, average))
+
+    print(f"Finished calculating values -> got {len(collected_power_samples)} averages")
 
 def flash_esp32(vid_pid, ppk2_device=None):
     print("Flashing ESP32 ...")
@@ -37,8 +42,13 @@ def flash_esp32(vid_pid, ppk2_device=None):
     if ppk2_device:
         ppk2_device.toggle_DUT_power("OFF")
 
-def log_esp32(vid_pid):
+def log_esp32(vid_pid, ppk2_device):
     print("Logging ESP32 ...")
+    shared_time.value = helper.get_time_in_ms()
+    ppk2_device.start_measuring()  # start measuring
+    time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
+    ppk2_device.toggle_DUT_power("ON")
+    print("Powering up ESP32 ...")
     serial_device = helper.get_serial_device(vid_pid)
 
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
@@ -49,8 +59,11 @@ def log_esp32(vid_pid):
     collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, stripped_line))
 
     serial_device.close()
+    print("Finished logging -> powering down ESP32 ...")
+    ppk2_device.toggle_DUT_power("OFF")
+    time.sleep(0.1)
+    ppk2_device.stop_measuring()
     is_esp32_done.value = True
-    print("Finished logging")
 
 def get_PPK2():
     print("Looking for PPK2 device ...")
@@ -72,7 +85,7 @@ def start_test(esp32_vid_pid, ppk2_device, flash=True):
     init_values()
 
     sampler = Process(target=start_sampling, args={ppk2_device})
-    logger = Process(target=log_esp32, args={esp32_vid_pid})
+    logger = Process(target=log_esp32, args=(esp32_vid_pid, ppk2_device))
 
     sampler.start()
     logger.start()
@@ -82,22 +95,12 @@ def start_test(esp32_vid_pid, ppk2_device, flash=True):
 
     return (collected_power_samples, collected_data_samples)
 
-
-def do_test_cycle(ppk2_device):
-    read_data = ppk2_device.get_data()
-    if read_data != b'':
-        samples = ppk2_device.get_samples(read_data)
-        power_samples = samples[0]
-        average = sum(power_samples)/len(power_samples)
-        collected_power_samples.append((helper.get_time_in_ms()-shared_time.value, average))
-    time.sleep(0.00001)  # lower time between sampling -> less samples read in one sampling period
-
 def init_values():
     print("Resetting values for new Test run ...")
     is_esp32_done.value = False
     del collected_power_samples[:]
     del collected_data_samples[:]
-    shared_time.value = helper.get_time_in_ms()
+    shared_time.value = 0
 
 # MAIN ENTRY POINT
 
@@ -105,7 +108,7 @@ manager = Manager()
 is_esp32_done = manager.Value('b', False)
 collected_power_samples = manager.list()
 collected_data_samples = manager.list()
-shared_time = manager.Value('i', helper.get_time_in_ms())
+shared_time = manager.Value('i', 0)
 
 if __name__ == '__main__':
     start_test(esp32_vid_pid="10c4:ea60", ppk2_device=get_PPK2(), flash=False)
