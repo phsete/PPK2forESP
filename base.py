@@ -5,15 +5,17 @@ from websockets import client
 import json
 from matplotlib import pyplot as plt
 import configparser
+import helper
 
 class Node:
-    def __init__(self, name="", ip="", isPi=False, save_string: str = None) -> None:
+    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest") -> None:
         if not save_string:
             self.uuid = uuid.uuid4()
             self.name = name
             self.ip = ip
             self.isPi = isPi
             self.is_connected = False
+            self.logger_version_to_flash = logger_version_to_flash
             self.averages = []
             self.data_samples = []
         else:
@@ -23,10 +25,11 @@ class Node:
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
             self.is_connected = False
+            self.logger_version_to_flash = strings[4]
             self.averages = []
             self.data_samples = []
     def __str__(self) -> str:
-        return f"({self.uuid},{self.name},{self.ip},{self.isPi})"
+        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
     def __repr__(self):
         return str(self)
     async def connect_to_device(self):
@@ -43,6 +46,13 @@ class Node:
         result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test"}))
         self.averages = result["power_samples"]
         self.data_samples = result["data_samples"]
+    async def flash(self):
+        ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
+        result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "flash", "version": self.logger_version_to_flash})
+        if result == "OK":
+            ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
+        else:
+            ui.notify(f"Node {self.name} could not flash ...", type='negative')
 
 nodes : List[Node] = []
 
@@ -113,19 +123,28 @@ def update_node(node: Node, name: str, ip: str, isPi: bool, dialog: ui.dialog):
     update_diagram()
     update_nodes()
 
+def version_select(node: Node, version_name):
+    node.logger_version_to_flash = version_name
+    return version_name
+
 def add_node_to_container(node: Node):
     with container:
-        with ui.card() as tempCard:
+        with ui.card().classes('w-64') as tempCard:
             ui.label(node.name)
             ui.label("TYPE: " + ("Pi" if node.isPi else "ESP"))
             ui.label("IP: " + node.ip)
+            with ui.row():
+                ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-36')
+                with ui.button(icon='play_arrow', on_click=node.flash).classes('w-12'):
+                    ui.tooltip("Start flashing logger version onto connected ESP32")
             with ui.row():
                 with ui.button(icon='delete', on_click=lambda: remove_node(node, tempCard, container)):
                     ui.tooltip("Remove this Node")
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
-                with ui.button(icon='play_arrow', on_click=node.start_test):
-                    ui.tooltip("Run test")
+                if node.is_connected:
+                    with ui.button(icon='play_arrow', on_click=node.start_test):
+                        ui.tooltip("Run test")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=node.connect_to_device):
                         ui.tooltip("Connect Node to Device")
@@ -152,6 +171,7 @@ def add_node(node: Node, dialog: ui.dialog = None):
 def save_to_file():
     file = open("nodes.save","w")
     for node in nodes:
+        print(str(node))
         file.write(str(node) + "\n")
     file.close()
     ui.notify("Saved to File 'nodes.save'!")
@@ -197,9 +217,21 @@ async def update_plots():
                     plt.xlabel('Time after boot [ms]')
                     for data in node.data_samples:
                         plt.axvline(data[0], color='r', ls="--", lw=0.5)
+                        plt.text(data[0],0,data[1],rotation=90)
+    x_val = [x[0] for x in node.averages]
+    y_val = [x[1] for x in node.averages]
+    # print(x_val, y_val)
+    plt.plot(x_val, y_val)
+    plt.ylabel('Power [uA]')
+    plt.xlabel('Time after boot [ms]')
+    for data in node.data_samples:
+        plt.axvline(data[0], color='r', ls="--", lw=0.5)
+        plt.text(data[0],0,data[1],rotation=90)
 
 config = configparser.ConfigParser()
 config.read("config.toml")
+
+available_logger_versions = ["latest"] + [version["name"] for version in helper.get_suitable_releases_with_asset("sender.bin")]
 
 add_dialog = create_node_dialog()
 
