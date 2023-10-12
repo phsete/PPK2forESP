@@ -15,12 +15,12 @@ async def process_message(message):
 
 async def respond(websocket):
     incoming = await websocket.recv()
-    print(f"<<< {incoming}")
+    # print(f"<<< {incoming}")
 
     outgoing = await process_message(incoming)
 
     await websocket.send(outgoing)
-    print(f">>> {outgoing}")
+    # print(f">>> {outgoing}")
 
 async def main():
     async with websockets.serve(respond, "0.0.0.0", helper.config["general"]["WebsocketPort"]):

@@ -170,10 +170,10 @@ async def send_json_data(uri, data) -> str:
     try:
         async with client.connect(uri) as websocket:
             await websocket.send(message)
-            print(f">>> {message}")
+            print("outgoing message")# print(f">>> {message}")
 
             response = await websocket.recv()
-            print(f"<<< {response}")
+            print("incoming message")# print(f"<<< {response}")
             return response
     except OSError as error:
         print(error)
@@ -191,7 +191,7 @@ async def update_plots():
                 with ui.pyplot(close=False, num="Test") as debug_plot:
                     x_val = [x[0] for x in node.averages]
                     y_val = [x[1] for x in node.averages]
-                    print(x_val, y_val)
+                    # print(x_val, y_val)
                     plt.plot(x_val, y_val)
                     plt.ylabel('Power [uA]')
                     plt.xlabel('Time after boot [ms]')
