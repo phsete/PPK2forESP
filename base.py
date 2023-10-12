@@ -218,15 +218,7 @@ async def update_plots():
                     for data in node.data_samples:
                         plt.axvline(data[0], color='r', ls="--", lw=0.5)
                         plt.text(data[0],0,data[1],rotation=90)
-    x_val = [x[0] for x in node.averages]
-    y_val = [x[1] for x in node.averages]
-    # print(x_val, y_val)
-    plt.plot(x_val, y_val)
-    plt.ylabel('Power [uA]')
-    plt.xlabel('Time after boot [ms]')
-    for data in node.data_samples:
-        plt.axvline(data[0], color='r', ls="--", lw=0.5)
-        plt.text(data[0],0,data[1],rotation=90)
+                    plt.show()
 
 config = configparser.ConfigParser()
 config.read("config.toml")
