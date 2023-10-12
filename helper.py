@@ -38,9 +38,8 @@ def get_suitable_releases_with_asset(asset_name):
     suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if asset_name in [asset["name"] for asset in release["assets"]]]
     return suitable_releases
 
-def download_asset_from_release(asset_name, path):
+def download_asset_from_release(asset_name, path, version="latest"):
     suitable_releases = get_suitable_releases_with_asset(asset_name)
-    version = config["node"]["LoggerVersion"]
     if(version == "latest"):
         version = suitable_releases[0]["name"]
 
