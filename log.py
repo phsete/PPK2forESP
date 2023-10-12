@@ -63,10 +63,8 @@ def get_PPK2():
     print("Found and configured PPK2 device")
     return ppk2
 
-def start_test(esp32_vid_pid, flash=True):
+def start_test(esp32_vid_pid, ppk2_device, flash=True):
     print("Starting Test ...")
-
-    ppk2_device = get_PPK2()
 
     if(flash):
         flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
@@ -110,4 +108,4 @@ collected_data_samples = manager.list()
 shared_time = manager.Value('i', helper.get_time_in_ms())
 
 if __name__ == '__main__':
-    start_test(esp32_vid_pid="10c4:ea60", flash=False)
+    start_test(esp32_vid_pid="10c4:ea60", ppk2_device=get_PPK2(), flash=False)

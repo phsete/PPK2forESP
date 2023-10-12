@@ -8,7 +8,7 @@ async def process_message(message):
     data = json.loads(message)
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
-        (collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], flash=True)
+        (collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), flash=False)
         return json.dumps({"power_samples": collected_power_samples._getvalue(), "data_samples": collected_data_samples._getvalue()})
     else:
         return "OK"
