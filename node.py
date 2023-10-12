@@ -10,6 +10,11 @@ async def process_message(message):
     if data["type"] == "start_test":
         (collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), flash=False)
         return json.dumps({"power_samples": collected_power_samples._getvalue(), "data_samples": collected_data_samples._getvalue()})
+    elif data["type"] == "flash":
+        helper.download_asset_from_release("sender.bin", "firmware.bin", data["version"])
+        print(f"downloaded version {data['version']}")
+        log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
+        return "OK" # Temporary return value -> not representing actual result of flash
     else:
         return "OK"
 

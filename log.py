@@ -54,6 +54,9 @@ def log_esp32(vid_pid, ppk2_device):
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
     while((line := serial_device.readline()) != b'READY\r\n'):
         pass
+    while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
+        pass
+    collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, line.decode('utf-8').strip().split(':')[1]))
     line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
     stripped_line = line.decode('utf-8').strip()
     collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, stripped_line))
