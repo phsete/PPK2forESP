@@ -5,3 +5,5 @@ websockets
 esptool
 requests
 matplotlib
+plotly
+pandas
