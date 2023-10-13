@@ -7,23 +7,27 @@ import helper
 
 def start_sampling(ppk2_device):
     print("Sampling ESP32 with PPK2 ...")
+    try:
 
-    values = []
+        values = []
 
-    # read measured values
-    while not is_esp32_done.value:
-        values.append((helper.get_time_in_ms(), ppk2_device.get_data()))
-        time.sleep(1/100000)
+        # read measured values
+        while not is_esp32_done.value:
+            values.append((helper.get_time_in_ms(), ppk2_device.get_data()))
+            time.sleep(1/100000)
 
-    print("Finished sampling -> calculating values ...")
+        print("Finished sampling -> calculating values ...")
 
-    for timestamp, value in values:
-        if value != b'':
-            samples, raw_output = ppk2_device.get_samples(value)
-            average = sum(samples)/len(samples)
-            collected_power_samples.append((timestamp-shared_time.value, average))
+        for timestamp, value in values:
+            if value != b'':
+                samples, raw_output = ppk2_device.get_samples(value)
+                average = sum(samples)/len(samples)
+                collected_power_samples.append((timestamp-shared_time.value, average))
 
-    print(f"Finished calculating values -> got {len(collected_power_samples)} averages")
+        print(f"Finished calculating values -> got {len(collected_power_samples)} averages")
+    except:
+        log_status.value = "Unknown Error while sampling data!"
+        print(log_status.value)
 
 def flash_esp32(vid_pid, ppk2_device=None):
     print("Flashing ESP32 ...")
@@ -57,6 +61,8 @@ def log_esp32(vid_pid, ppk2_device, version):
     ppk2_device.start_measuring()  # start measuring
     time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
     ppk2_device.toggle_DUT_power("ON")
+    if log_status.value != "OK":
+        return
     print("Powering up ESP32 ...")
     serial_device = helper.get_serial_device(vid_pid)
 
@@ -68,7 +74,7 @@ def log_esp32(vid_pid, ppk2_device, version):
 
     if version != "debug" and device_info[2] == "not set":
         log_status.value = "Device Version not set!"
-    elif version != "debug" and (not device_info[2] == version and (version == "latest" and device_info[2] == latest_version)):
+    elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] == latest_version):
         log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]}"
 
     print(f"Version check: {log_status.value}")
@@ -92,13 +98,19 @@ def log_esp32(vid_pid, ppk2_device, version):
 
 def get_PPK2():
     print("Looking for PPK2 device ...")
-    if((ppk2_port := helper.find_serial_device("PPK2")) == None):
-        exit("ERROR: No PPK2 device found!")
-    ppk2 = PPK2_API(ppk2_port)
-    ppk2.get_modifiers()
-    ppk2.use_ampere_meter()
-    ppk2.set_source_voltage(3300)  # set source voltage in mV
-    print("Found and configured PPK2 device")
+    try:
+        if((ppk2_port := helper.find_serial_device("PPK2")) == None):
+            log_status.value = "ERROR: No PPK2 device found!"
+            print(log_status.value)
+        ppk2 = PPK2_API(ppk2_port)
+        ppk2.get_modifiers()
+        ppk2.use_ampere_meter()
+        ppk2.set_source_voltage(3300)  # set source voltage in mV
+        print("Found and configured PPK2 device")
+    except:
+        log_status.value = "Unknown Error while looking for PPK2 device!"
+        print(log_status.value)
+    
     return ppk2
 
 def start_test(esp32_vid_pid, ppk2_device, version, flash=True):
