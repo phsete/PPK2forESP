@@ -122,7 +122,9 @@ def generate_mermaid_string():
     return result
 
 def update_diagram():
-    node_graph.set_content(generate_mermaid_string())
+    node_graph_container.clear()
+    new_node_graph = ui.mermaid(generate_mermaid_string())
+    new_node_graph.move(node_graph_container)
 
 def edit_node(node: Node, card: ui.card):
     create_node_edit_dialog(node).open()
@@ -264,8 +266,7 @@ with ui.splitter().style("position: relative; min-height: 500px; margin: auto;")
     with splitter.before:
         container = ui.row()
     with splitter.after:
-        node_graph = ui.mermaid(generate_mermaid_string())
-
+        node_graph_container = ui.row()
 ui.separator().style("top: 50px; bottom: 50px;")
 
 with ui.row().style("margin: auto;"):
