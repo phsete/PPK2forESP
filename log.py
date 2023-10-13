@@ -68,7 +68,7 @@ def log_esp32(vid_pid, ppk2_device, version):
 
     if version != "debug" and device_info[2] == "not set":
         log_status.value = "Device Version not set!"
-    elif version != "debug" and (not device_info[2] == version and (version == "latest" and device_info[2] == latest_version)):
+    elif (version != "debug" and not device_info[2] == version) or (version != "debug" and version == "latest" and device_info[2] == latest_version):
         log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]}"
 
     print(f"Version check: {log_status.value}")
