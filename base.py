@@ -32,6 +32,13 @@ class Node:
         return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
     def __repr__(self):
         return str(self)
+    def render_dialog(self, result):
+        with ui.dialog() as dialog, ui.card():
+            ui.label(f"Node {self.name} returned status of '{result['status']}' -> no data available")
+            ui.button('Close', on_click=dialog.close)
+            ui.button('Flash selected version', on_click=lambda: error_flash(dialog, self))
+            ui.button('Retry', on_click=lambda: error_retry(dialog, self))
+        return dialog
     async def connect_to_device(self):
         ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
         result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "connection_test"})
@@ -43,9 +50,14 @@ class Node:
         else:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def start_test(self):
-        result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test"}))
-        self.averages = result["power_samples"]
-        self.data_samples = result["data_samples"]
+        result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test", "version": self.logger_version_to_flash}))
+        if result["status"] == "OK":
+            self.averages = result["power_samples"]
+            self.data_samples = result["data_samples"]
+            ui.notify(f"Node {self.name} returned status of '{result['status']}' -> please update plots", type='positive')
+        else:
+            ui.notify(f"Node {self.name} returned status of '{result['status']}' -> no data available", type='negative')
+            self.render_dialog(result).open()
     async def flash(self):
         ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
         result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "flash", "version": self.logger_version_to_flash})
@@ -57,6 +69,14 @@ class Node:
 nodes : List[Node] = []
 
 node_string = '''{id}["{name}\nTYPE: {isPi}\nIP: {ip}"]\n'''
+
+async def error_flash(dialog, node: Node):
+    dialog.close() # does not work completely
+    await node.flash()
+
+async def error_retry(dialog, node: Node):
+    dialog.close() # does not work completely
+    await node.start_test()
 
 def create_node_dialog():
     with ui.dialog() as dialog, ui.card():
