@@ -8,6 +8,7 @@ import plotly.express as px
 import pandas as pd
 import configparser
 import helper
+from contextlib import contextmanager
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest") -> None:
@@ -34,13 +35,6 @@ class Node:
         return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
     def __repr__(self):
         return str(self)
-    def render_dialog(self, result):
-        with ui.dialog() as dialog, ui.card():
-            ui.label(f"Node {self.name} returned status of '{result['status']}' -> no data available")
-            ui.button('Close', on_click=dialog.close)
-            ui.button('Flash selected version', on_click=lambda: error_flash(dialog, self))
-            ui.button('Retry', on_click=lambda: error_retry(dialog, self))
-        return dialog
     async def connect_to_device(self):
         ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
         result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "connection_test"})
@@ -51,34 +45,27 @@ class Node:
             ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
         else:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
-    async def start_test(self):
-        result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test", "version": self.logger_version_to_flash}))
-        if result["status"] == "OK":
-            self.averages = result["power_samples"]
-            self.data_samples = result["data_samples"]
-            ui.notify(f"Node {self.name} returned status of '{result['status']}' -> please update plots", type='positive')
-        else:
-            ui.notify(f"Node {self.name} returned status of '{result['status']}' -> no data available", type='negative')
-            self.render_dialog(result).open()
-    async def flash(self):
-        ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
-        result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "flash", "version": self.logger_version_to_flash})
-        if result == "OK":
-            ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
-        else:
-            ui.notify(f"Node {self.name} could not flash ...", type='negative')
+    async def start_test(self, button: ui.button):
+        with disable(button):
+            result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test", "version": self.logger_version_to_flash}))
+            if result["status"] == "OK":
+                self.averages = result["power_samples"]
+                self.data_samples = result["data_samples"]
+                ui.notify(f"Node {self.name} returned status of '{result['status']}' -> please update plots", type='positive')
+            else:
+                ui.notify(f"Node {self.name} returned status of '{result['status']}' -> no data available", type='negative', timeout=0, close_button="Dismiss")
+    async def flash(self, button: ui.button):
+        with disable(button):
+            ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
+            result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "flash", "version": self.logger_version_to_flash})
+            if result == "OK":
+                ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
+            else:
+                ui.notify(f"Node {self.name} could not flash ...", type='negative')
 
 nodes : List[Node] = []
 
 node_string = '''{id}["{name}\nTYPE: {isPi}\nIP: {ip}"]\n'''
-
-async def error_flash(dialog, node: Node):
-    dialog.close() # does not work completely
-    await node.flash()
-
-async def error_retry(dialog, node: Node):
-    dialog.close() # does not work completely
-    await node.start_test()
 
 def create_node_dialog():
     with ui.dialog() as dialog, ui.card():
@@ -151,6 +138,18 @@ def version_select(node: Node, version_name):
     node.logger_version_to_flash = version_name
     return version_name
 
+@contextmanager
+def disable(button: ui.button) -> None:
+    button.disable()
+    with ui.row().classes("w-56") as row:
+        ui.label("Running Test").classes("w-22 animate-pulse")
+        ui.spinner(type="dots").classes("w-24")
+        try:
+            yield
+        finally:
+            row.delete()
+            button.enable()
+
 def add_node_to_container(node: Node):
     with container:
         with ui.card().classes('w-64') as tempCard:
@@ -159,7 +158,7 @@ def add_node_to_container(node: Node):
             ui.label("IP: " + node.ip)
             with ui.row():
                 ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-36')
-                with ui.button(icon='play_arrow', on_click=node.flash).classes('w-12'):
+                with ui.button(icon='play_arrow', on_click=lambda e: node.flash(e.sender)).classes('w-12'):
                     ui.tooltip("Start flashing logger version onto connected ESP32")
             with ui.row():
                 with ui.button(icon='delete', on_click=lambda: remove_node(node, tempCard, container)):
@@ -167,7 +166,7 @@ def add_node_to_container(node: Node):
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
                 if node.is_connected:
-                    with ui.button(icon='play_arrow', on_click=node.start_test):
+                    with ui.button(icon='play_arrow', on_click=lambda e: node.start_test(e.sender)):
                         ui.tooltip("Run test")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=node.connect_to_device):
