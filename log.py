@@ -43,6 +43,13 @@ def flash_esp32(vid_pid, ppk2_device=None):
     if ppk2_device:
         ppk2_device.toggle_DUT_power("OFF")
 
+def process_log_message(line):
+    if(line[0:3] == b'LOG'):
+        split_log = line.decode('utf-8').strip().split(':')
+        collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, split_log[1]))
+        if helper.config["node"]["PrintLogs"] == "True":
+            print(f"LOG: {split_log[1]}")
+
 def log_esp32(vid_pid, ppk2_device, version):
     print("Logging ESP32 ...")
     latest_version = helper.get_suitable_releases_with_asset("sender.bin")[0]
@@ -55,7 +62,7 @@ def log_esp32(vid_pid, ppk2_device, version):
 
     # Wait for the ESP to be ready (when it outputs "READY" to its serial)
     while((line := serial_device.readline())[0:5] != b'Hello'):
-        pass
+        process_log_message(line)
     device_info = line.decode('utf-8').strip().split(':')
     print(f"Type: {device_info[1]}, Version: {device_info[2]}")
 
@@ -68,7 +75,7 @@ def log_esp32(vid_pid, ppk2_device, version):
 
     if log_status.value == "OK":
         while((line := serial_device.readline()) != b'READY\r\n'):
-            pass
+            process_log_message(line)
         while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
             pass
         collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, line.decode('utf-8').strip().split(':')[1]))

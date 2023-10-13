@@ -6,3 +6,4 @@ Token = github_pat_11ABTS4FY0E9GoCQgC3vB6_WpN314XFlc2j4LkOp0CCW2X88lZPzNuojku7Sv
 
 [node]
 ESP32VidPid = 10c4:ea60
+PrintLogs = False
