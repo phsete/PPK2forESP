@@ -4,6 +4,8 @@ import uuid
 from websockets import client
 import json
 from matplotlib import pyplot as plt
+import plotly.express as px
+import pandas as pd
 import configparser
 import helper
 
@@ -228,17 +230,25 @@ async def update_plots():
         with container_plots:
             with ui.card() as tempCard:
                 ui.label(node.name)
-                with ui.pyplot(close=False, num="Test") as debug_plot:
-                    x_val = [x[0] for x in node.averages]
-                    y_val = [x[1] for x in node.averages]
-                    # print(x_val, y_val)
-                    plt.plot(x_val, y_val)
-                    plt.ylabel('Power [uA]')
-                    plt.xlabel('Time after boot [ms]')
-                    for data in node.data_samples:
-                        plt.axvline(data[0], color='r', ls="--", lw=0.5)
-                        plt.text(data[0],0,data[1],rotation=90)
-                    plt.show()
+                df = pd.DataFrame(dict(
+                    x = [x[0] for x in node.averages],
+                    y = [x[1] for x in node.averages],
+                ))
+                fig = px.line(
+                    data_frame = df,
+                    x = "x",
+                    y = "y",
+                    title = node.name,
+                    labels=dict(x="Time [ms]", y="Power [uA]"))
+                for data in node.data_samples:
+                    fig.add_vline(
+                        x=data[0], line_width=3, line_dash="dash", 
+                        line_color="green",
+                        annotation=dict(
+                            text=data[1],
+                            textangle=-90)
+                        )
+                ui.plotly(fig)
 
 config = configparser.ConfigParser()
 config.read("config.toml")
