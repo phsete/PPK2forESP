@@ -5,29 +5,24 @@ import esptool
 import time
 import helper
 
+ppk2_device_temp = None
+
 def start_sampling(ppk2_device):
     print("Sampling ESP32 with PPK2 ...")
+    is_sampling.value = True
     try:
-
-        values = []
 
         # read measured values
         while not is_esp32_done.value:
-            values.append((helper.get_time_in_ms(), ppk2_device.get_data()))
+            value_buffer.append((helper.get_time_in_ms(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
-        print("Finished sampling -> calculating values ...")
 
-        for timestamp, value in values:
-            if value != b'':
-                samples, raw_output = ppk2_device.get_samples(value)
-                average = sum(samples)/len(samples)
-                collected_power_samples.append((timestamp-shared_time.value, average))
-
-        print(f"Finished calculating values -> got {len(collected_power_samples)} averages")
+        print("Finished sampling")
     except:
         log_status.value = "Unknown Error while sampling data!"
         print(log_status.value)
+    is_sampling.value = False
 
 def flash_esp32(vid_pid, ppk2_device=None):
     print("Flashing ESP32 ...")
@@ -78,6 +73,7 @@ def log_esp32(vid_pid, ppk2_device, version):
         log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]}"
 
     print(f"Version check: {log_status.value}")
+    time.sleep(10)
 
     if log_status.value == "OK":
         while((line := serial_device.readline()) != b'READY\r\n'):
@@ -135,19 +131,23 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True):
 def init_values():
     print("Resetting values for new Test run ...")
     is_esp32_done.value = False
+    is_sampling.value = False
     log_status.value = "OK"
     del collected_power_samples[:]
     del collected_data_samples[:]
     shared_time.value = 0
+    del value_buffer[:]
 
 # MAIN ENTRY POINT
 
 manager = Manager()
 is_esp32_done = manager.Value('b', False)
+is_sampling = manager.Value('b', False)
 log_status = manager.Value(c_char_p, "OK")
 collected_power_samples = manager.list()
 collected_data_samples = manager.list()
 shared_time = manager.Value('i', 0)
+value_buffer = manager.list()
 
 if __name__ == '__main__':
     start_test(esp32_vid_pid="10c4:ea60", ppk2_device=get_PPK2(), version="debug", flash=False)
