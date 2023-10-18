@@ -1,67 +1,159 @@
 from nicegui import ui
 from typing import List
-import uuid
+from uuid import UUID, uuid4
 from websockets import client
 import json
 from matplotlib import pyplot as plt
 import plotly.express as px
+import plotly.graph_objects as go
+import plotly.colors as plotly_colors
 import pandas as pd
 import configparser
 import helper
 from contextlib import contextmanager
+import requests
+import time
+import asyncio
+
+class Job:
+    def __init__(self, uuid: UUID, averages, data_samples):
+        self.uuid = uuid
+        self.averages = averages
+        self.data_samples = data_samples
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest") -> None:
         if not save_string:
-            self.uuid = uuid.uuid4()
+            self.uuid = uuid4()
             self.name = name
             self.ip = ip
             self.isPi = isPi
             self.is_connected = False
             self.logger_version_to_flash = logger_version_to_flash
-            self.averages = []
-            self.data_samples = []
+            self.jobs = []
+            self.rendered_plot_once = False
         else:
             strings = save_string[1:-2].split(",")
-            self.uuid = uuid.UUID(strings[0])
+            self.uuid = UUID(strings[0])
             self.name = strings[1]
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
-            self.averages = []
-            self.data_samples = []
+            self.jobs = [] # could be saved and reloaded here
+            self.rendered_plot_once = False
+        self.plot_dialog = create_plot_dialog()
     def __str__(self) -> str:
         return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
     def __repr__(self):
         return str(self)
-    async def connect_to_device(self):
-        ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
-        result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "connection_test"})
-        if result == "OK":
-            self.is_connected = True
-            update_diagram()
-            update_nodes()
-            ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
-        else:
-            ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def connect_to_device(self, button: ui.button):
+        with disable(button, "Connect to device"):
+            try:
+                ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
+                response = await future1
+                print(response.text)
+                result = response.json()
+                if result["status"] == "OK":
+                    self.is_connected = True
+                    update_diagram()
+                    update_nodes()
+                    ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
+                else:
+                    ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative') # throws KeyError: 60?!
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def start_test(self, button: ui.button):
-        with disable(button):
-            result = json.loads(await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "start_test", "version": self.logger_version_to_flash}))
-            if result["status"] == "OK":
-                self.averages = result["power_samples"]
-                self.data_samples = result["data_samples"]
-                ui.notify(f"Node {self.name} returned status of '{result['status']}' -> please update plots", type='positive')
-            else:
-                ui.notify(f"Node {self.name} returned status of '{result['status']}' -> no data available", type='negative', timeout=0, close_button="Dismiss")
+        with disable(button, "Starting Test"):
+            try:
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                response = await future1
+                print(response.text)
+                result = response.json()
+                if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
+                    self.latest_job_uuid = result["uuid"]
+                    ui.notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
+                    time.sleep(3)
+                    future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                    response2 = await future2
+                    print(response2.text)
+                    result2 = response2.json()
+                    if not(result2["status"] == "OK" or result2["status"] == "started" or result2["status"] == "created"):
+                        # Error
+                        ui.notify(f"Node {self.name} could not start test with status of '{result2['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                else:
+                    ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def flash(self, button: ui.button):
-        with disable(button):
-            ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
-            result = await send_json_data(f"ws://{self.ip}:{config['general']['WebsocketPort']}", {"type": "flash", "version": self.logger_version_to_flash})
-            if result == "OK":
-                ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
+        with disable(button, "Flashing device"):
+            try:
+                ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash}, timeout=60))
+                response = await future1
+                print(response.text)
+                result = response.json()
+                if result["status"] == "OK":
+                    ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
+                else:
+                    ui.notify(f"Node {self.name} could not flash ...", type='negative')
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def get_jobs(self):
+        try:
+            if(self.is_connected):
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/jobs", timeout=3600))
+                response = await future1
+                print(response.text)
+                result = response.json()
+                self.jobs = [Job(uuid, result[uuid]["collected_power_samples"], result[uuid]["collected_data_samples"]) for uuid in [*result]]
+                print(f"Job UUID's: {[*result]}") # get the first key of the json response
+                with open(f"result-{self.uuid}.json", "w") as outfile:
+                    outfile.write(json.dumps(result))
             else:
-                ui.notify(f"Node {self.name} could not flash ...", type='negative')
+                ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
+        except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+            ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def update_plot(self, button: ui.button):
+        self.plot_dialog.clear()
+        with self.plot_dialog:
+            temp_card = ui.card()
+        with disable(button, "Updating Plot", container=temp_card, remove_container_afterwards=True):
+            self.plot_dialog.open()
+            await self.get_jobs()
+            with self.plot_dialog:
+                fig = go.Figure()
+                fig.update_layout(legend_title_text="Jobs", title=self.name)
+                fig.update_xaxes(title_text="Time [ms]")
+                fig.update_yaxes(title_text="Power [uA]")
+                i = 0
+                for job in self.jobs:
+                    fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
+                    for data in job.data_samples:
+                        fig.add_vline(
+                            x=data[0], line_width=3, line_dash="dash", 
+                            line_color=plotly_colors.qualitative.Plotly[i],
+                            annotation=dict(
+                                text=f"{i}: {data[1]}",
+                                textangle=-90)
+                            )
+                    i += 1
+                with ui.card().classes("w-full h-full").style("max-width: None"):
+                    ui.plotly(fig).classes("w-full max-w-none").style("max-width: none; height: calc(100% - 60px);")
+                    with ui.row():
+                        ui.button("Update", on_click=lambda e: self.update_plot(e.sender))
+                        ui.button("Close", on_click=self.plot_dialog.close)
+    async def show_plot(self, button: ui.button):
+        if self.rendered_plot_once:
+            self.plot_dialog.open()
+        else:
+            await self.update_plot(button)
+            self.rendered_plot_once = True
 
 nodes : List[Node] = []
 
@@ -78,6 +170,11 @@ def create_node_dialog():
         isPiField = ui.switch("is connected over PI")
 
         ui.button('Add Node', on_click=lambda: add_node(Node(name=nameField.value, ip=ipField.value, isPi=isPiField.value), dialog))
+    return dialog
+
+def create_plot_dialog():
+    with ui.dialog() as dialog:
+        pass
     return dialog
 
 def create_node_edit_dialog(node: Node):
@@ -139,16 +236,20 @@ def version_select(node: Node, version_name):
     return version_name
 
 @contextmanager
-def disable(button: ui.button) -> None:
+def disable(button: ui.button, status_text, container=None, remove_container_afterwards=False) -> None:
     button.disable()
     with ui.row().classes("w-56") as row:
-        ui.label("Running Test").classes("w-22 animate-pulse")
+        ui.label(status_text).classes("w-22 animate-pulse")
         ui.spinner(type="dots").classes("w-24")
+        if(container):
+            row.move(container)
         try:
             yield
         finally:
             row.delete()
             button.enable()
+            if remove_container_afterwards:
+                container.delete()
 
 def add_node_to_container(node: Node):
     with container:
@@ -168,8 +269,10 @@ def add_node_to_container(node: Node):
                 if node.is_connected:
                     with ui.button(icon='play_arrow', on_click=lambda e: node.start_test(e.sender)):
                         ui.tooltip("Run test")
+                    with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
+                        ui.tooltip("Show Plot")
                 if not node.is_connected:
-                    with ui.button(icon='link', on_click=node.connect_to_device):
+                    with ui.button(icon='link', on_click=lambda e: node.connect_to_device(e.sender)):
                         ui.tooltip("Connect Node to Device")
 
 def update_nodes():
@@ -225,31 +328,29 @@ async def send_json_data(uri, data) -> str:
         print(error)
         return "ERR"
     
-async def update_plots():
-    container_plots.clear()
-    for node in nodes:
-        with container_plots:
-            with ui.card() as tempCard:
-                ui.label(node.name)
-                df = pd.DataFrame(dict(
-                    x = [x[0] for x in node.averages],
-                    y = [x[1] for x in node.averages],
-                ))
-                fig = px.line(
-                    data_frame = df,
-                    x = "x",
-                    y = "y",
-                    title = node.name,
-                    labels=dict(x="Time [ms]", y="Power [uA]"))
-                for data in node.data_samples:
-                    fig.add_vline(
-                        x=data[0], line_width=3, line_dash="dash", 
-                        line_color="green",
-                        annotation=dict(
-                            text=data[1],
-                            textangle=-90)
-                        )
-                ui.plotly(fig)
+# async def update_plots():
+#     container_plots.clear()
+#     for node in nodes:
+#         node.get_jobs()
+#         with container_plots:
+#             with ui.card() as tempCard:
+#                 fig = go.Figure()
+#                 fig.update_layout(legend_title_text="Jobs", title=node.name)
+#                 fig.update_xaxes(title_text="Time [ms]")
+#                 fig.update_yaxes(title_text="Power [uA]")
+#                 i = 0
+#                 for job in node.jobs:
+#                     fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
+#                     for data in job.data_samples:
+#                         fig.add_vline(
+#                             x=data[0], line_width=3, line_dash="dash", 
+#                             line_color=plotly_colors.qualitative.Plotly[i],
+#                             annotation=dict(
+#                                 text=f"{i}: {data[1]}",
+#                                 textangle=-90)
+#                             )
+#                     i += 1
+#                 ui.plotly(fig)
 
 config = configparser.ConfigParser()
 config.read("config.toml")
@@ -275,8 +376,6 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Save to File 'nodes.save'")
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
-    with ui.button(icon="refresh", on_click=update_plots):
-        ui.tooltip("Update Plots")
 
 ui.separator().style("top: 50px; bottom: 50px;")
 

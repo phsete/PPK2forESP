@@ -49,7 +49,7 @@ def process_log_message(line):
         if helper.config["node"]["PrintLogs"] == "True":
             print(f"LOG: {split_log[1]}")
 
-def log_esp32(vid_pid, ppk2_device, version):
+def log_esp32(vid_pid, ppk2_device, version, change_status):
     print("Logging ESP32 ...")
     latest_version = helper.get_suitable_releases_with_asset("sender.bin")[0]
     shared_time.value = helper.get_time_in_ms()
@@ -69,11 +69,14 @@ def log_esp32(vid_pid, ppk2_device, version):
 
     if version != "debug" and device_info[2] == "not set":
         log_status.value = "Device Version not set!"
-    elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] == latest_version):
-        log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]}"
+    elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
+        log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
 
     print(f"Version check: {log_status.value}")
-    time.sleep(10)
+    if change_status:
+        change_status(log_status.value)
+
+    time.sleep(30)
 
     if log_status.value == "OK":
         while((line := serial_device.readline()) != b'READY\r\n'):
@@ -109,7 +112,7 @@ def get_PPK2():
     
     return ppk2
 
-def start_test(esp32_vid_pid, ppk2_device, version, flash=True):
+def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, change_status=None):
     print("Starting Test ...")
 
     if(flash):
@@ -118,7 +121,7 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True):
     init_values()
 
     sampler = Process(target=start_sampling, args={ppk2_device})
-    logger = Process(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version))
+    logger = Process(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status))
 
     sampler.start()
     logger.start()
@@ -126,7 +129,8 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True):
     logger.join()
     print("Finished Test")
 
-    return (log_status.value, collected_power_samples, collected_data_samples)
+    if callback:
+        callback(log_status.value)
 
 def init_values():
     print("Resetting values for new Test run ...")

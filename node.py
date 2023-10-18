@@ -15,34 +15,67 @@ from contextlib import asynccontextmanager
 from http import HTTPStatus
 import uvicorn
 
-class Job(BaseModel):
-    uid: UUID = Field(default_factory=uuid4)
-    status: str = "in_progress"
-    result: int = None
+class Job():
+    def __init__(self):
+        self.uuid: UUID = uuid4()
+        self.status: str = "created"
+        self.collected_power_samples: list = []
+        self.collected_data_samples: list = []
 
 app = FastAPI()
 jobs: Dict[UUID, Job] = {}
 
-async def run_in_process(fn, *args):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(app.state.executor, fn, *args)  # wait and return result
-
-async def start_task(uid: UUID, func, param: int) -> None:
-    jobs[uid].result = await run_in_process(func, param)
-    jobs[uid].status = "complete"
+def start_task(uuid: UUID, func, *args) -> None:
+    jobs[uuid].status = "started"
+    func(*args)
 
 @app.get("/")
 def hello_world():
-    return {"Hello": "World"}
+    return {"Hello": "World", "status": "OK"}
 
-@app.get("/start")
-def start():
+def test_callback(uuid: UUID, log_status):
+    calculate_values(uuid)
+    jobs[uuid].status = log_status
+
+def change_status(uuid: UUID, log_status):
+    print(f"change: {log_status}")
+    jobs[uuid].status = log_status
+    print(jobs[uuid].status)
+
+@app.post("/start/")
+def start(background_tasks: BackgroundTasks, version: str):
     log.ppk2_device_temp = log.get_PPK2()
-    (log_status, collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.ppk2_device_temp, version="latest", flash=False)
-    return json.dumps({"status": log_status})
+    new_job = Job()
+    jobs[new_job.uuid] = new_job
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status))
+    return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
-@app.get("/values")
-def values():
+@app.post("/flash/")
+def flash(version: str):
+    helper.download_asset_from_release("sender.bin", "firmware.bin", version)
+    print(f"downloaded version {version}")
+    log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
+    return {"status": "OK"}
+
+@app.get("/status/")
+def status(uuid: UUID):
+    selected_job = jobs[uuid] if uuid in jobs else None
+    if selected_job:
+        print(selected_job.status)
+        return {"status": selected_job.status}
+    else:
+        return {"error": "Job with specified UUID not found."}
+    
+@app.get("/jobs")
+def get_jobs():
+    response = {}
+    for uuid, job in jobs.items():
+        if(job.status == "started"):
+            calculate_values(uuid)
+        response[str(uuid)] = {"collected_power_samples": job.collected_power_samples, "collected_data_samples": job.collected_data_samples}
+    return response
+    
+def calculate_values(uuid: UUID):
     print("Calculating values ...")
 
     values = log.value_buffer._getvalue()
@@ -58,15 +91,20 @@ def values():
             samples, raw_output = log.ppk2_device_temp.get_samples(value)
             average = sum(samples)/len(samples)
             collected_power_samples_return.append((timestamp-log.shared_time.value, average))
-    if len(collected_power_samples_return) > 0:
-        print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
-        return json.dumps({"power_samples": collected_power_samples_return, "data_samples": collected_data_samples_return})
-    elif log.is_sampling.value:
-        return json.dumps({"status": "running test but no samples available yet"})
-    else:
-        return json.dumps({"status": "not running test and no samples available"})
-    
 
+    print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
+    jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
+    jobs[uuid].collected_data_samples.extend(collected_data_samples_return)
+
+
+@app.get("/values/")
+def values(uuid: UUID):
+    selected_job = jobs[uuid] if uuid in jobs else None
+    if selected_job:
+        calculate_values(uuid)
+        return 
+    else:
+        return {"error": "Job with specified UUID not found."}
 
 async def process_message(message):
     data = json.loads(message)
