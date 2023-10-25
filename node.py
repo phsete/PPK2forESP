@@ -78,19 +78,21 @@ def get_jobs():
 def calculate_values(uuid: UUID):
     print("Calculating values ...")
 
-    values = log.value_buffer._getvalue()
-    del log.value_buffer[:]
+    values = log.value_buffer
+    log.value_buffer = []
 
     collected_power_samples_return = []
 
-    collected_data_samples_return = log.collected_data_samples._getvalue()
-    del log.collected_data_samples[:]
+    collected_data_samples_return = log.collected_data_samples
+    print(collected_data_samples_return)
+    log.collected_data_samples = []
+    print(collected_data_samples_return)
 
     for timestamp, value in values:
         if value != b'':
             samples, raw_output = log.ppk2_device_temp.get_samples(value)
             average = sum(samples)/len(samples)
-            collected_power_samples_return.append((timestamp-log.shared_time.value, average))
+            collected_power_samples_return.append((timestamp-log.shared_time, average))
 
     print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
     jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
@@ -111,7 +113,7 @@ async def process_message(message):
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
         (log_status, collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
-        return json.dumps({"status": log_status, "power_samples": collected_power_samples._getvalue(), "data_samples": collected_data_samples._getvalue()})
+        return json.dumps({"status": log_status, "power_samples": collected_power_samples, "data_samples": collected_data_samples})
     elif data["type"] == "flash":
         helper.download_asset_from_release("sender.bin", "firmware.bin", data["version"])
         print(f"downloaded version {data['version']}")

@@ -1,5 +1,5 @@
 from ppk2_api.ppk2_api import PPK2_API
-from multiprocessing import Process, Manager
+from threading import Thread, Event
 from ctypes import c_char_p
 import esptool
 import time
@@ -8,21 +8,25 @@ import helper
 ppk2_device_temp = None
 
 def start_sampling(ppk2_device):
+    global is_sampling
+    global log_status
+    global value_buffer
+
     print("Sampling ESP32 with PPK2 ...")
-    is_sampling.value = True
+    is_sampling = True
     try:
 
         # read measured values
-        while not is_esp32_done.value:
+        while not is_esp32_done.is_set():
             value_buffer.append((helper.get_time_in_ms(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
 
         print("Finished sampling")
     except:
-        log_status.value = "Unknown Error while sampling data!"
-        print(log_status.value)
-    is_sampling.value = False
+        log_status = "Unknown Error while sampling data!"
+        print(log_status)
+    is_sampling = False
 
 def flash_esp32(vid_pid, ppk2_device=None):
     print("Flashing ESP32 ...")
@@ -45,18 +49,22 @@ def flash_esp32(vid_pid, ppk2_device=None):
 def process_log_message(line):
     if(line[0:3] == b'LOG'):
         split_log = line.decode('utf-8').strip().split(':')
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, split_log[1]))
+        collected_data_samples.append((helper.get_time_in_ms()-shared_time, split_log[1]))
         if helper.config["node"]["PrintLogs"] == "True":
             print(f"LOG: {split_log[1]}")
 
 def log_esp32(vid_pid, ppk2_device, version, change_status):
+    global log_status
+    global collected_data_samples
+    global shared_time
+
     print("Logging ESP32 ...")
     latest_version = helper.get_suitable_releases_with_asset("sender.bin")[0]
-    shared_time.value = helper.get_time_in_ms()
+    shared_time = helper.get_time_in_ms()
     ppk2_device.start_measuring()  # start measuring
     time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
     ppk2_device.toggle_DUT_power("ON")
-    if log_status.value != "OK":
+    if log_status != "OK":
         return
     print("Powering up ESP32 ...")
     serial_device = helper.get_serial_device(vid_pid)
@@ -68,47 +76,45 @@ def log_esp32(vid_pid, ppk2_device, version, change_status):
     print(f"Type: {device_info[1]}, Version: {device_info[2]}")
 
     if version != "debug" and device_info[2] == "not set":
-        log_status.value = "Device Version not set!"
+        log_status = "Device Version not set!"
     elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
-        log_status.value = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
+        log_status = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
 
-    print(f"Version check: {log_status.value}")
+    print(f"Version check: {log_status}")
     if change_status:
-        change_status(log_status.value)
+        change_status(log_status)
 
-    time.sleep(30)
-
-    if log_status.value == "OK":
+    if log_status == "OK":
         while((line := serial_device.readline()) != b'READY\r\n'):
             process_log_message(line)
         while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
             pass
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, line.decode('utf-8').strip().split(':')[1]))
+        collected_data_samples.append((helper.get_time_in_ms()-shared_time, line.decode('utf-8').strip().split(':')[1]))
         line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
         stripped_line = line.decode('utf-8').strip()
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time.value, stripped_line))
+        collected_data_samples.append((helper.get_time_in_ms()-shared_time, stripped_line))
 
     serial_device.close()
     print("Finished logging -> powering down ESP32 ...")
     ppk2_device.toggle_DUT_power("OFF")
     time.sleep(0.1)
     ppk2_device.stop_measuring()
-    is_esp32_done.value = True
+    is_esp32_done.set()
 
 def get_PPK2():
     print("Looking for PPK2 device ...")
     try:
         if((ppk2_port := helper.find_serial_device("PPK2")) == None):
-            log_status.value = "ERROR: No PPK2 device found!"
-            print(log_status.value)
+            log_status = "ERROR: No PPK2 device found!"
+            print(log_status)
         ppk2 = PPK2_API(ppk2_port)
         ppk2.get_modifiers()
         ppk2.use_ampere_meter()
         ppk2.set_source_voltage(3300)  # set source voltage in mV
         print("Found and configured PPK2 device")
     except:
-        log_status.value = "Unknown Error while looking for PPK2 device!"
-        print(log_status.value)
+        log_status = "Unknown Error while looking for PPK2 device!"
+        print(log_status)
     
     return ppk2
 
@@ -119,9 +125,10 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, c
         flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
 
     init_values()
+    print(value_buffer)
 
-    sampler = Process(target=start_sampling, args={ppk2_device})
-    logger = Process(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status))
+    sampler = Thread(target=start_sampling, args={ppk2_device})
+    logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status))
 
     sampler.start()
     logger.start()
@@ -130,28 +137,33 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, c
     print("Finished Test")
 
     if callback:
-        callback(log_status.value)
+        callback(log_status)
 
 def init_values():
     print("Resetting values for new Test run ...")
-    is_esp32_done.value = False
-    is_sampling.value = False
-    log_status.value = "OK"
-    del collected_power_samples[:]
-    del collected_data_samples[:]
-    shared_time.value = 0
-    del value_buffer[:]
+    global is_sampling
+    global log_status
+    global collected_power_samples
+    global collected_data_samples
+    global shared_time
+    global value_buffer
+    is_esp32_done.clear()
+    is_sampling = False
+    log_status = "OK"
+    collected_power_samples = []
+    collected_data_samples = []
+    shared_time = 0
+    value_buffer = []
 
 # MAIN ENTRY POINT
 
-manager = Manager()
-is_esp32_done = manager.Value('b', False)
-is_sampling = manager.Value('b', False)
-log_status = manager.Value(c_char_p, "OK")
-collected_power_samples = manager.list()
-collected_data_samples = manager.list()
-shared_time = manager.Value('i', 0)
-value_buffer = manager.list()
+is_esp32_done = Event()
+is_sampling = False
+log_status = "OK"
+collected_power_samples = []
+collected_data_samples = []
+shared_time = 0
+value_buffer = []
 
 if __name__ == '__main__':
     start_test(esp32_vid_pid="10c4:ea60", ppk2_device=get_PPK2(), version="debug", flash=False)
