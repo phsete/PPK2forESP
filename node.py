@@ -36,6 +36,7 @@ def hello_world():
 def test_callback(uuid: UUID, log_status):
     calculate_values(uuid)
     jobs[uuid].status = log_status
+    log.ppk2_device_temp.ser.close()
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
