@@ -149,4 +149,4 @@ async def main():
 if __name__ == "__main__":    
     helper.download_asset_from_release("sender.bin", "firmware.bin")
 
-    uvicorn.run("node:app", host='localhost', port= 8000, loop='asyncio')
+    uvicorn.run("node:app", host='0.0.0.0', port= 8000, loop='asyncio')
