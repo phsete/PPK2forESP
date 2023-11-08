@@ -14,12 +14,36 @@ from contextlib import contextmanager
 import requests
 import time
 import asyncio
+from typing import Dict
 
 class Job:
     def __init__(self, uuid: UUID, averages, data_samples):
         self.uuid = uuid
         self.averages = averages
         self.data_samples = data_samples
+
+class Data:
+    def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, timestamp_send: float = None, timestamp_recv: float = None):
+        self.uuid = uuid
+        self.value = value
+        self.created_by_mac = created_by_mac
+        self.timestamp_send = timestamp_send
+        self.timestamp_recv = timestamp_recv
+
+    def parse_sender_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
+        self.uuid = uuid
+        self.value = value
+        self.created_by_mac = created_by_mac
+        self.timestamp_send = timestamp
+
+    def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
+        # self.uuid = uuid
+        # self.value = value
+        # self.created_by_mac = created_by_mac
+        self.timestamp_recv = timestamp
+
+    def add_to_table(self, table: ui.table):
+        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'timestamp_send': self.timestamp_send, 'timestamp_recv': self.timestamp_recv})
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
@@ -174,6 +198,8 @@ class Node:
             self.logger_type = "sender"
 
 nodes : List[Node] = []
+
+data_values: Dict[str, Data] = {}
 
 node_string = '''{id}["{name}\nTYPE: {isPi}\nIP: {ip}"]\n'''
 
@@ -334,6 +360,21 @@ def load_from_file(container):
     file.close()
     ui.notify("Loaded from File 'nodes.save'!")
 
+async def update_data_values():
+    for node in nodes:
+        await node.get_jobs()
+        for job in node.jobs:
+            for data in job.data_samples:
+                text = str(data[1]).split(';')
+                if len(text) > 1 :
+                    value, uuid, created_by_mac = text
+                    if uuid not in data_values.keys():
+                        data_values[uuid] = Data()
+                    if node.logger_type == "sender":
+                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data[0])
+                    elif node.logger_type == "receiver":
+                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, data[0])
+
 async def update_table():
     table_area.clear()
     with table_area:
@@ -350,14 +391,10 @@ async def update_table():
                 table.toggle_fullscreen()
                 button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
             button = ui.button('Toggle fullscreen', icon='fullscreen', on_click=toggle).props('flat')
-    for node in nodes:
-        await node.get_jobs()
-        for job in node.jobs:
-            for data in job.data_samples:
-                text = str(data[1]).split(';')
-                if len(text) > 1 :
-                    value, uuid, created_by_mac = text
-                    table.add_rows({'uuid': uuid, 'value': value, 'created_by': created_by_mac, 'timestamp_send': data[0], 'timestamp_recv': 0})
+    await update_data_values()
+    for data in data_values:
+        data.add_to_table(table)
+                    
 
 async def send_json_data(uri, data) -> str:
     message = json.dumps(data)
