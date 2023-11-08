@@ -18,7 +18,7 @@ def start_sampling(ppk2_device):
 
         # read measured values
         while not is_esp32_done.is_set():
-            value_buffer.append((helper.get_time_in_ms(), ppk2_device.get_data()))
+            value_buffer.append((helper.get_corrected_time(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
 
@@ -49,7 +49,7 @@ def flash_esp32(vid_pid, ppk2_device=None):
 def process_log_message(line):
     if(line[0:3] == b'LOG'):
         split_log = line.decode('utf-8').strip().split(':')
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, split_log[1]))
+        collected_data_samples.append((helper.get_corrected_time()-shared_time, split_log[1]))
         if helper.config["node"]["PrintLogs"] == "True":
             print(f"LOG: {split_log[1]}")
 
@@ -60,7 +60,8 @@ def log_esp32(vid_pid, ppk2_device, version, change_status):
 
     print("Logging ESP32 ...")
     latest_version = helper.get_suitable_releases_with_asset("sender.bin")[0]
-    shared_time = helper.get_time_in_ms()
+    shared_time = helper.get_ntp_time_in_ms()
+    print(f"Started test at NTP Time: {shared_time}")
     ppk2_device.start_measuring()  # start measuring
     time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
     ppk2_device.toggle_DUT_power("ON")
@@ -89,10 +90,10 @@ def log_esp32(vid_pid, ppk2_device, version, change_status):
             process_log_message(line)
         while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
             pass
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, line.decode('utf-8').strip().split(':')[1]))
+        collected_data_samples.append((helper.get_corrected_time()-shared_time, line.decode('utf-8').strip().split(':')[1]))
         line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
         stripped_line = line.decode('utf-8').strip()
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, stripped_line))
+        collected_data_samples.append((helper.get_corrected_time()-shared_time, stripped_line))
 
     serial_device.close()
     print("Finished logging -> powering down ESP32 ...")

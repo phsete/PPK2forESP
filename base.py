@@ -54,7 +54,6 @@ class Node:
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK":
                     self.is_connected = True
@@ -69,9 +68,9 @@ class Node:
         with disable(button, "Starting Test"):
             try:
                 loop = asyncio.get_event_loop()
+                print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
                 future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
                     self.latest_job_uuid = result["uuid"]
@@ -88,6 +87,19 @@ class Node:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
                 ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def sync_time(self, button: ui.button):
+        with disable(button, "Syncing Time"):
+            try:
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/sync", timeout=10))
+                response = await future1
+                result = response.json()
+                if result["status"] == "OK":
+                    ui.notify(f"Node {self.name} synced time successfully with status of '{result['status']}'", type='positive')
+                else:
+                    ui.notify(f"Node {self.name} could not synced time with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def flash(self, button: ui.button):
         with disable(button, "Flashing device"):
             try:
@@ -95,7 +107,6 @@ class Node:
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash}, timeout=60))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK":
                     ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
@@ -109,10 +120,9 @@ class Node:
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/jobs", timeout=3600))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 self.jobs = [Job(uuid, result[uuid]["collected_power_samples"], result[uuid]["collected_data_samples"]) for uuid in [*result]]
-                print(f"Job UUID's: {[*result]}") # get the first key of the json response
+                # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 with open(f"result-{self.uuid}.json", "w") as outfile:
                     outfile.write(json.dumps(result))
             else:
@@ -271,6 +281,8 @@ def add_node_to_container(node: Node):
                         ui.tooltip("Run test")
                     with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
                         ui.tooltip("Show Plot")
+                    with ui.button(icon='play_arrow', on_click=lambda e: node.sync_time(e.sender)):
+                        ui.tooltip("Sync Time")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=lambda e: node.connect_to_device(e.sender)):
                         ui.tooltip("Connect Node to Device")
@@ -311,6 +323,31 @@ def load_from_file(container):
     file.close()
     ui.notify("Loaded from File 'nodes.save'!")
 
+async def update_table():
+    table_area.clear()
+    with table_area:
+        columns = [
+            {'name': 'uuid', 'label': 'UUID', 'field': 'uuid'},
+            {'name': 'value', 'label': 'Value', 'field': 'value'},
+            {'name': 'created_by', 'label': 'Created By [MAC]', 'field': 'created_by'},
+            {'name': 'timestamp_send', 'label': 'Timestamp Sender', 'field': 'timestamp_send'},
+            {'name': 'timestamp_recv', 'label': 'Timestamp Receiver', 'field': 'timestamp_recv'},
+        ]
+        table = ui.table(columns=columns, rows=[], row_key='uuid').classes('w-full')
+        with table.add_slot('top-left'):
+            def toggle() -> None:
+                table.toggle_fullscreen()
+                button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
+            button = ui.button('Toggle fullscreen', icon='fullscreen', on_click=toggle).props('flat')
+    for node in nodes:
+        await node.get_jobs()
+        for job in node.jobs:
+            for data in job.data_samples:
+                text = str(data[1]).split(';')
+                if len(text) > 1 :
+                    value, uuid, created_by_mac = text
+                    table.add_rows({'uuid': uuid, 'value': value, 'created_by': created_by_mac, 'timestamp_send': data[0], 'timestamp_recv': 0})
+
 async def send_json_data(uri, data) -> str:
     message = json.dumps(data)
     try:
@@ -327,30 +364,6 @@ async def send_json_data(uri, data) -> str:
     except Exception as error:
         print(error)
         return "ERR"
-    
-# async def update_plots():
-#     container_plots.clear()
-#     for node in nodes:
-#         node.get_jobs()
-#         with container_plots:
-#             with ui.card() as tempCard:
-#                 fig = go.Figure()
-#                 fig.update_layout(legend_title_text="Jobs", title=node.name)
-#                 fig.update_xaxes(title_text="Time [ms]")
-#                 fig.update_yaxes(title_text="Power [uA]")
-#                 i = 0
-#                 for job in node.jobs:
-#                     fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
-#                     for data in job.data_samples:
-#                         fig.add_vline(
-#                             x=data[0], line_width=3, line_dash="dash", 
-#                             line_color=plotly_colors.qualitative.Plotly[i],
-#                             annotation=dict(
-#                                 text=f"{i}: {data[1]}",
-#                                 textangle=-90)
-#                             )
-#                     i += 1
-#                 ui.plotly(fig)
 
 config = configparser.ConfigParser()
 config.read("config.toml")
@@ -376,9 +389,11 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Save to File 'nodes.save'")
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
+    with ui.button(icon="refresh", on_click=lambda: update_table()):
+        ui.tooltip("Update Table")
 
 ui.separator().style("top: 50px; bottom: 50px;")
 
-container_plots = ui.row()
+table_area = ui.row()
 
 ui.run(title="Testsuit")
