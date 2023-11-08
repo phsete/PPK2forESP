@@ -44,12 +44,12 @@ def change_status(uuid: UUID, log_status):
     print(jobs[uuid].status)
 
 @app.post("/start/")
-def start(background_tasks: BackgroundTasks, version: str):
+def start(background_tasks: BackgroundTasks, version: str, node_type: str):
     print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status))
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status), node_type)
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
 @app.post("/sync")
@@ -60,8 +60,8 @@ def sync_time():
     return {"status": "OK"}
 
 @app.post("/flash/")
-def flash(version: str):
-    helper.download_asset_from_release("sender.bin", "firmware.bin", version)
+def flash(version: str, node_type: str):
+    helper.download_asset_from_release(f"{node_type}.bin", "firmware.bin", version)
     print(f"downloaded version {version}")
     log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
     return {"status": "OK"}

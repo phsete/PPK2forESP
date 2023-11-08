@@ -22,7 +22,7 @@ class Job:
         self.data_samples = data_samples
 
 class Node:
-    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest") -> None:
+    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
         if not save_string:
             self.uuid = uuid4()
             self.name = name
@@ -30,6 +30,7 @@ class Node:
             self.isPi = isPi
             self.is_connected = False
             self.logger_version_to_flash = logger_version_to_flash
+            self.logger_type = logger_type
             self.jobs = []
             self.rendered_plot_once = False
         else:
@@ -40,11 +41,12 @@ class Node:
             self.isPi = strings[3] == "True"
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
+            self.logger_type = strings[5]
             self.jobs = [] # could be saved and reloaded here
             self.rendered_plot_once = False
         self.plot_dialog = create_plot_dialog()
     def __str__(self) -> str:
-        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
+        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type})"
     def __repr__(self):
         return str(self)
     async def connect_to_device(self, button: ui.button):
@@ -69,7 +71,7 @@ class Node:
             try:
                 loop = asyncio.get_event_loop()
                 print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
@@ -105,7 +107,7 @@ class Node:
             try:
                 ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
                 loop = asyncio.get_event_loop()
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash}, timeout=60))
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=60))
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK":
@@ -164,6 +166,12 @@ class Node:
         else:
             await self.update_plot(button)
             self.rendered_plot_once = True
+    async def change_type(self, switch: ui.switch):
+        print(switch.value)
+        if switch.value == True:
+            self.logger_type = "receiver"
+        else:
+            self.logger_type = "sender"
 
 nodes : List[Node] = []
 
@@ -267,6 +275,9 @@ def add_node_to_container(node: Node):
             ui.label(node.name)
             ui.label("TYPE: " + ("Pi" if node.isPi else "ESP"))
             ui.label("IP: " + node.ip)
+            with ui.row():
+                ui.label("Sender")
+                ui.switch("Receiver", value=node.logger_type == "receiver",on_change=lambda e: node.change_type(e.sender))
             with ui.row():
                 ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-36')
                 with ui.button(icon='play_arrow', on_click=lambda e: node.flash(e.sender)).classes('w-12'):

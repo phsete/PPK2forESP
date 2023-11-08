@@ -71,7 +71,7 @@ def download_asset_from_release(asset_name, path, version="latest"):
         exit("Specified Logger Version not found in Releases")
 
     assets = [release for release in suitable_releases if release["name"] == version][0]["assets"]
-    sender_asset_url = [asset for asset in assets if asset["name"] == "sender.bin"][0]["url"]
+    sender_asset_url = [asset for asset in assets if asset["name"] == asset_name][0]["url"]
 
     response = requests.get(sender_asset_url, headers={'Authorization': 'token ' + config["general.github"]["Token"], 'Accept': 'application/octet-stream'})
     if(response.ok):
