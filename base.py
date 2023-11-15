@@ -392,7 +392,8 @@ async def update_table():
                 button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
             button = ui.button('Toggle fullscreen', icon='fullscreen', on_click=toggle).props('flat')
     await update_data_values()
-    for data in data_values:
+    print(data_values)
+    for uuid, data in data_values.items():
         data.add_to_table(table)
                     
 
