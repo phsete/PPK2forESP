@@ -14,6 +14,7 @@ from contextlib import contextmanager
 import requests
 import time
 import asyncio
+from typing import Dict
 
 class Job:
     def __init__(self, uuid: UUID, averages, data_samples):
@@ -21,8 +22,31 @@ class Job:
         self.averages = averages
         self.data_samples = data_samples
 
+class Data:
+    def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, timestamp_send: float = None, timestamp_recv: float = None):
+        self.uuid = uuid
+        self.value = value
+        self.created_by_mac = created_by_mac
+        self.timestamp_send = timestamp_send
+        self.timestamp_recv = timestamp_recv
+
+    def parse_sender_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
+        self.uuid = uuid
+        self.value = value
+        self.created_by_mac = created_by_mac
+        self.timestamp_send = timestamp
+
+    def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
+        # self.uuid = uuid
+        # self.value = value
+        # self.created_by_mac = created_by_mac
+        self.timestamp_recv = timestamp
+
+    def add_to_table(self, table: ui.table):
+        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
+
 class Node:
-    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest") -> None:
+    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
         if not save_string:
             self.uuid = uuid4()
             self.name = name
@@ -30,6 +54,7 @@ class Node:
             self.isPi = isPi
             self.is_connected = False
             self.logger_version_to_flash = logger_version_to_flash
+            self.logger_type = logger_type
             self.jobs = []
             self.rendered_plot_once = False
         else:
@@ -40,11 +65,12 @@ class Node:
             self.isPi = strings[3] == "True"
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
+            self.logger_type = strings[5]
             self.jobs = [] # could be saved and reloaded here
             self.rendered_plot_once = False
         self.plot_dialog = create_plot_dialog()
     def __str__(self) -> str:
-        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash})"
+        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type})"
     def __repr__(self):
         return str(self)
     async def connect_to_device(self, button: ui.button):
@@ -54,7 +80,6 @@ class Node:
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK":
                     self.is_connected = True
@@ -69,9 +94,9 @@ class Node:
         with disable(button, "Starting Test"):
             try:
                 loop = asyncio.get_event_loop()
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
                     self.latest_job_uuid = result["uuid"]
@@ -88,14 +113,26 @@ class Node:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
                 ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def sync_time(self, button: ui.button):
+        with disable(button, "Syncing Time"):
+            try:
+                loop = asyncio.get_event_loop()
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/sync", timeout=10))
+                response = await future1
+                result = response.json()
+                if result["status"] == "OK":
+                    ui.notify(f"Node {self.name} synced time successfully with status of '{result['status']}'", type='positive')
+                else:
+                    ui.notify(f"Node {self.name} could not synced time with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def flash(self, button: ui.button):
         with disable(button, "Flashing device"):
             try:
                 ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
                 loop = asyncio.get_event_loop()
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash}, timeout=60))
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=60))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 if result["status"] == "OK":
                     ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
@@ -109,10 +146,9 @@ class Node:
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/jobs", timeout=3600))
                 response = await future1
-                print(response.text)
                 result = response.json()
                 self.jobs = [Job(uuid, result[uuid]["collected_power_samples"], result[uuid]["collected_data_samples"]) for uuid in [*result]]
-                print(f"Job UUID's: {[*result]}") # get the first key of the json response
+                # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 with open(f"result-{self.uuid}.json", "w") as outfile:
                     outfile.write(json.dumps(result))
             else:
@@ -154,8 +190,16 @@ class Node:
         else:
             await self.update_plot(button)
             self.rendered_plot_once = True
+    async def change_type(self, switch: ui.switch):
+        print(switch.value)
+        if switch.value == True:
+            self.logger_type = "receiver"
+        else:
+            self.logger_type = "sender"
 
 nodes : List[Node] = []
+
+data_values: Dict[str, Data] = {}
 
 node_string = '''{id}["{name}\nTYPE: {isPi}\nIP: {ip}"]\n'''
 
@@ -258,6 +302,9 @@ def add_node_to_container(node: Node):
             ui.label("TYPE: " + ("Pi" if node.isPi else "ESP"))
             ui.label("IP: " + node.ip)
             with ui.row():
+                ui.label("Sender")
+                ui.switch("Receiver", value=node.logger_type == "receiver",on_change=lambda e: node.change_type(e.sender))
+            with ui.row():
                 ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-36')
                 with ui.button(icon='play_arrow', on_click=lambda e: node.flash(e.sender)).classes('w-12'):
                     ui.tooltip("Start flashing logger version onto connected ESP32")
@@ -271,6 +318,8 @@ def add_node_to_container(node: Node):
                         ui.tooltip("Run test")
                     with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
                         ui.tooltip("Show Plot")
+                    with ui.button(icon='play_arrow', on_click=lambda e: node.sync_time(e.sender)):
+                        ui.tooltip("Sync Time")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=lambda e: node.connect_to_device(e.sender)):
                         ui.tooltip("Connect Node to Device")
@@ -311,6 +360,44 @@ def load_from_file(container):
     file.close()
     ui.notify("Loaded from File 'nodes.save'!")
 
+async def update_data_values():
+    for node in nodes:
+        await node.get_jobs()
+        for job in node.jobs:
+            for data in job.data_samples:
+                text = str(data[1]).split(';')
+                if len(text) > 1 :
+                    value, uuid, created_by_mac = text
+                    if uuid not in data_values.keys():
+                        data_values[uuid] = Data()
+                    if node.logger_type == "sender":
+                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data[0])
+                    elif node.logger_type == "receiver":
+                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, data[0])
+
+async def update_table():
+    table_area.clear()
+    with table_area:
+        columns = [
+            {'name': 'uuid', 'label': 'UUID', 'field': 'uuid'},
+            {'name': 'value', 'label': 'Value', 'field': 'value'},
+            {'name': 'created_by', 'label': 'Created By [MAC]', 'field': 'created_by'},
+            {'name': 'timestamp_send', 'label': 'Timestamp Sender', 'field': 'timestamp_send'},
+            {'name': 'timestamp_recv', 'label': 'Timestamp Receiver', 'field': 'timestamp_recv'},
+            {'name': 'latency', 'label': 'Latency', 'field': 'latency'},
+        ]
+        table = ui.table(columns=columns, rows=[], row_key='uuid').classes('w-full')
+        with table.add_slot('top-left'):
+            def toggle() -> None:
+                table.toggle_fullscreen()
+                button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
+            button = ui.button('Toggle fullscreen', icon='fullscreen', on_click=toggle).props('flat')
+    await update_data_values()
+    print(data_values)
+    for uuid, data in data_values.items():
+        data.add_to_table(table)
+                    
+
 async def send_json_data(uri, data) -> str:
     message = json.dumps(data)
     try:
@@ -327,30 +414,6 @@ async def send_json_data(uri, data) -> str:
     except Exception as error:
         print(error)
         return "ERR"
-    
-# async def update_plots():
-#     container_plots.clear()
-#     for node in nodes:
-#         node.get_jobs()
-#         with container_plots:
-#             with ui.card() as tempCard:
-#                 fig = go.Figure()
-#                 fig.update_layout(legend_title_text="Jobs", title=node.name)
-#                 fig.update_xaxes(title_text="Time [ms]")
-#                 fig.update_yaxes(title_text="Power [uA]")
-#                 i = 0
-#                 for job in node.jobs:
-#                     fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
-#                     for data in job.data_samples:
-#                         fig.add_vline(
-#                             x=data[0], line_width=3, line_dash="dash", 
-#                             line_color=plotly_colors.qualitative.Plotly[i],
-#                             annotation=dict(
-#                                 text=f"{i}: {data[1]}",
-#                                 textangle=-90)
-#                             )
-#                     i += 1
-#                 ui.plotly(fig)
 
 config = configparser.ConfigParser()
 config.read("config.toml")
@@ -376,9 +439,11 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Save to File 'nodes.save'")
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
+    with ui.button(icon="refresh", on_click=lambda: update_table()):
+        ui.tooltip("Update Table")
 
 ui.separator().style("top: 50px; bottom: 50px;")
 
-container_plots = ui.row()
+table_area = ui.row()
 
 ui.run(title="Testsuit")

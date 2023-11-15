@@ -18,7 +18,7 @@ def start_sampling(ppk2_device):
 
         # read measured values
         while not is_esp32_done.is_set():
-            value_buffer.append((helper.get_time_in_ms(), ppk2_device.get_data()))
+            value_buffer.append((helper.get_corrected_time(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
 
@@ -49,18 +49,19 @@ def flash_esp32(vid_pid, ppk2_device=None):
 def process_log_message(line):
     if(line[0:3] == b'LOG'):
         split_log = line.decode('utf-8').strip().split(':')
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, split_log[1]))
+        collected_data_samples.append((helper.get_corrected_time(), split_log[1]))
         if helper.config["node"]["PrintLogs"] == "True":
             print(f"LOG: {split_log[1]}")
 
-def log_esp32(vid_pid, ppk2_device, version, change_status):
+def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
     global log_status
     global collected_data_samples
     global shared_time
 
     print("Logging ESP32 ...")
-    latest_version = helper.get_suitable_releases_with_asset("sender.bin")[0]
-    shared_time = helper.get_time_in_ms()
+    latest_version = helper.get_suitable_releases_with_asset(f"{node_type}.bin")[0]
+    shared_time = helper.get_ntp_time_in_ms()
+    print(f"Started test at NTP Time: {shared_time}")
     ppk2_device.start_measuring()  # start measuring
     time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
     ppk2_device.toggle_DUT_power("ON")
@@ -75,6 +76,8 @@ def log_esp32(vid_pid, ppk2_device, version, change_status):
     device_info = line.decode('utf-8').strip().split(':')
     print(f"Type: {device_info[1]}, Version: {device_info[2]}")
 
+    if device_info[1] != node_type:
+        log_status = f"Wrong device type! -> has type {device_info[1]} ... should be type {node_type}"
     if version != "debug" and device_info[2] == "not set":
         log_status = "Device Version not set!"
     elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
@@ -85,14 +88,21 @@ def log_esp32(vid_pid, ppk2_device, version, change_status):
         change_status(log_status)
 
     if log_status == "OK":
-        while((line := serial_device.readline()) != b'READY\r\n'):
-            process_log_message(line)
-        while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
-            pass
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, line.decode('utf-8').strip().split(':')[1]))
-        line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-        stripped_line = line.decode('utf-8').strip()
-        collected_data_samples.append((helper.get_time_in_ms()-shared_time, stripped_line))
+        if node_type == "sender":
+            while((line := serial_device.readline()) != b'READY\r\n'):
+                process_log_message(line)
+            while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
+                pass
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+            line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
+            stripped_line = line.decode('utf-8').strip()
+            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
+        elif node_type == "receiver":
+            while((line := serial_device.readline())[0:4] != b'RECV'):
+                print(line)
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+        else:
+            log_status = f"Unknown device type {node_type}"
 
     serial_device.close()
     print("Finished logging -> powering down ESP32 ...")
@@ -118,7 +128,7 @@ def get_PPK2():
     
     return ppk2
 
-def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, change_status=None):
+def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, change_status=None, node_type="sender"):
     print("Starting Test ...")
 
     if(flash):
@@ -128,7 +138,7 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, c
     print(value_buffer)
 
     sampler = Thread(target=start_sampling, args={ppk2_device})
-    logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status))
+    logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status, node_type))
 
     sampler.start()
     logger.start()

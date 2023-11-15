@@ -44,16 +44,24 @@ def change_status(uuid: UUID, log_status):
     print(jobs[uuid].status)
 
 @app.post("/start/")
-def start(background_tasks: BackgroundTasks, version: str):
+def start(background_tasks: BackgroundTasks, version: str, node_type: str):
+    print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status))
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status), node_type)
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
+@app.post("/sync")
+def sync_time():
+    old_delta = helper.ntp_delta
+    helper.sync_ntp_corrected_time_delta()
+    print(f"Synced time from {old_delta}s delta to {helper.ntp_delta}s delta")
+    return {"status": "OK"}
+
 @app.post("/flash/")
-def flash(version: str):
-    helper.download_asset_from_release("sender.bin", "firmware.bin", version)
+def flash(version: str, node_type: str):
+    helper.download_asset_from_release(f"{node_type}.bin", "firmware.bin", version)
     print(f"downloaded version {version}")
     log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
     return {"status": "OK"}
@@ -93,7 +101,7 @@ def calculate_values(uuid: UUID):
         if value != b'':
             samples, raw_output = log.ppk2_device_temp.get_samples(value)
             average = sum(samples)/len(samples)
-            collected_power_samples_return.append((timestamp-log.shared_time, average))
+            collected_power_samples_return.append((timestamp, average))
 
     print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
     jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
@@ -141,4 +149,4 @@ async def main():
 if __name__ == "__main__":    
     helper.download_asset_from_release("sender.bin", "firmware.bin")
 
-    uvicorn.run("node:app", host='localhost', port= 8000, loop='asyncio')
+    uvicorn.run("node:app", host='0.0.0.0', port= 8000, loop='asyncio')
