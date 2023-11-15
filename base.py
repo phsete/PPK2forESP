@@ -43,7 +43,7 @@ class Data:
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
-        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'timestamp_send': self.timestamp_send, 'timestamp_recv': self.timestamp_recv})
+        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
@@ -384,6 +384,7 @@ async def update_table():
             {'name': 'created_by', 'label': 'Created By [MAC]', 'field': 'created_by'},
             {'name': 'timestamp_send', 'label': 'Timestamp Sender', 'field': 'timestamp_send'},
             {'name': 'timestamp_recv', 'label': 'Timestamp Receiver', 'field': 'timestamp_recv'},
+            {'name': 'latency', 'label': 'Latency', 'field': 'latency'},
         ]
         table = ui.table(columns=columns, rows=[], row_key='uuid').classes('w-full')
         with table.add_slot('top-left'):
