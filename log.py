@@ -49,7 +49,7 @@ def flash_esp32(vid_pid, ppk2_device=None):
 def process_log_message(line):
     if(line[0:3] == b'LOG'):
         split_log = line.decode('utf-8').strip().split(':')
-        collected_data_samples.append((helper.get_corrected_time()-shared_time, split_log[1]))
+        collected_data_samples.append((helper.get_corrected_time(), split_log[1]))
         if helper.config["node"]["PrintLogs"] == "True":
             print(f"LOG: {split_log[1]}")
 
