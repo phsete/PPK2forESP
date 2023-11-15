@@ -93,14 +93,14 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
                 process_log_message(line)
             while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
                 pass
-            collected_data_samples.append((helper.get_corrected_time()-shared_time, line.decode('utf-8').strip().split(':')[1]))
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
             line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
             stripped_line = line.decode('utf-8').strip()
-            collected_data_samples.append((helper.get_corrected_time()-shared_time, stripped_line))
+            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
         elif node_type == "receiver":
             while((line := serial_device.readline())[0:4] != b'RECV'):
                 print(line)
-            collected_data_samples.append((helper.get_corrected_time()-shared_time, line.decode('utf-8').strip().split(':')[1]))
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
         else:
             log_status = f"Unknown device type {node_type}"
 

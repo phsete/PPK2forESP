@@ -101,7 +101,7 @@ def calculate_values(uuid: UUID):
         if value != b'':
             samples, raw_output = log.ppk2_device_temp.get_samples(value)
             average = sum(samples)/len(samples)
-            collected_power_samples_return.append((timestamp-log.shared_time, average))
+            collected_power_samples_return.append((timestamp, average))
 
     print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
     jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
