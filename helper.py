@@ -23,7 +23,7 @@ def get_corrected_time():
     """
     Get approximated ntp time (based on NTP Delta and system time)
     """
-    return (time.time() + ntp_delta) * 1000
+    return (time.time() - ntp_delta) * 1000
 
 def sync_ntp_corrected_time_delta():
     global ntp_delta
