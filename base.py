@@ -23,12 +23,13 @@ class Job:
         self.data_samples = data_samples
 
 class Data:
-    def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, timestamp_send: float = None, timestamp_recv: float = None):
+    def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, crc_equal: bool = None, timestamp_send: float = None, timestamp_recv: float = None):
         self.uuid = uuid
         self.value = value
         self.created_by_mac = created_by_mac
         self.timestamp_send = timestamp_send
         self.timestamp_recv = timestamp_recv
+        self.crc_equal = crc_equal
 
     def parse_sender_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
         self.uuid = uuid
@@ -36,10 +37,11 @@ class Data:
         self.created_by_mac = created_by_mac
         self.timestamp_send = timestamp
 
-    def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
+    def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, crc_equal: bool, timestamp: float):
         # self.uuid = uuid
         # self.value = value
         # self.created_by_mac = created_by_mac
+        self.crc_equal = crc_equal
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
@@ -367,13 +369,13 @@ async def update_data_values():
             for data in job.data_samples:
                 text = str(data[1]).split(';')
                 if len(text) > 1 :
-                    value, uuid, created_by_mac = text
+                    value, uuid, created_by_mac, crc_equal = text
                     if uuid not in data_values.keys():
                         data_values[uuid] = Data()
                     if node.logger_type == "sender":
                         data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data[0])
                     elif node.logger_type == "receiver":
-                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, data[0])
+                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data[0])
 
 async def update_table():
     table_area.clear()
@@ -382,6 +384,7 @@ async def update_table():
             {'name': 'uuid', 'label': 'UUID', 'field': 'uuid'},
             {'name': 'value', 'label': 'Value', 'field': 'value'},
             {'name': 'created_by', 'label': 'Created By [MAC]', 'field': 'created_by'},
+            {'name': 'crc_equal', 'label': 'CRC Equal', 'field': 'crc_equal'},
             {'name': 'timestamp_send', 'label': 'Timestamp Sender', 'field': 'timestamp_send'},
             {'name': 'timestamp_recv', 'label': 'Timestamp Receiver', 'field': 'timestamp_recv'},
             {'name': 'latency', 'label': 'Latency', 'field': 'latency'},
