@@ -33,19 +33,23 @@ class Data:
 
     def parse_sender_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
         self.uuid = uuid
-        self.value = value
+        # self.value = value
         self.created_by_mac = created_by_mac
         self.timestamp_send = timestamp
 
     def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, crc_equal: bool, timestamp: float):
         # self.uuid = uuid
-        # self.value = value
+        self.value = value
         # self.created_by_mac = created_by_mac
         self.crc_equal = crc_equal
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
-        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
+        if self.crc_equal:
+            crc_str = "True"
+        else:
+            crc_str = "False"
+        table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'crc_equal': crc_str, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
 
 class Node:
     def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
@@ -369,7 +373,10 @@ async def update_data_values():
             for data in job.data_samples:
                 text = str(data[1]).split(';')
                 if len(text) > 1 :
-                    value, uuid, created_by_mac, crc_equal = text
+                    if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
+                        value, uuid, created_by_mac, crc_equal = text
+                    else:
+                        value, uuid, created_by_mac = text
                     if uuid not in data_values.keys():
                         data_values[uuid] = Data()
                     if node.logger_type == "sender":
