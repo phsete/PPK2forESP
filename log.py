@@ -129,25 +129,26 @@ def get_PPK2():
     return ppk2
 
 def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, change_status=None, node_type="sender"):
-    print("Starting Test ...")
+    while True:
+        print("Starting Test ...")
 
-    if(flash):
-        flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
+        if(flash):
+            flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
 
-    init_values()
-    print(value_buffer)
+        init_values()
+        print(value_buffer)
 
-    sampler = Thread(target=start_sampling, args={ppk2_device})
-    logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status, node_type))
+        sampler = Thread(target=start_sampling, args={ppk2_device})
+        logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status, node_type))
 
-    sampler.start()
-    logger.start()
-    sampler.join()
-    logger.join()
-    print("Finished Test")
+        sampler.start()
+        logger.start()
+        sampler.join()
+        logger.join()
+        print("Finished Test")
 
-    if callback:
-        callback(log_status)
+        if callback:
+            callback(log_status)
 
 def init_values():
     print("Resetting values for new Test run ...")
