@@ -60,7 +60,7 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
 
     print("Logging ESP32 ...")
     latest_version = helper.get_suitable_releases_with_asset(f"{node_type}.bin")[0]
-    shared_time = helper.get_ntp_time_in_ms()
+    shared_time = helper.get_system_time_in_ms()
     print(f"Started test at NTP Time: {shared_time}")
     ppk2_device.start_measuring()  # start measuring
     time.sleep(0.25) # give the PPK2 time to get the first valid measurement (first read values from PPK2 are just b'' for ~200ms)
