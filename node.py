@@ -47,7 +47,7 @@ def change_status(uuid: UUID, log_status):
 
 @app.post("/start/")
 def start(background_tasks: BackgroundTasks, version: str, node_type: str):
-    print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
+    # print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job

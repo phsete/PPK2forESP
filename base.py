@@ -100,7 +100,7 @@ class Node:
         with disable(button, "Starting Test"):
             try:
                 loop = asyncio.get_event_loop()
-                print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
+                # print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
                 future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
                 result = response.json()
