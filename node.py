@@ -33,10 +33,11 @@ def start_task(uuid: UUID, func, *args) -> None:
 def hello_world():
     return {"Hello": "World", "status": "OK"}
 
-def test_callback(uuid: UUID, log_status):
+def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, version: str, node_type: str):
     calculate_values(uuid)
     jobs[uuid].status = log_status
     log.ppk2_device_temp.ser.close()
+    start(background_tasks, version, node_type)
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -49,7 +50,7 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status), node_type)
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type)
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
 @app.post("/sync")

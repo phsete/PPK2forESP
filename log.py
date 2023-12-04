@@ -17,7 +17,7 @@ def start_sampling(ppk2_device):
     try:
 
         # read measured values
-        while True:#not is_esp32_done.is_set():
+        while not is_esp32_done.is_set():
             value_buffer.append((helper.get_corrected_time(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
@@ -87,23 +87,22 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
     if change_status:
         change_status(log_status)
 
-    while True:
-        if log_status == "OK":
-            if node_type == "sender":
-                while((line := serial_device.readline()) != b'READY\r\n'):
-                    process_log_message(line)
-                while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
-                    pass
-                collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-                line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-                stripped_line = line.decode('utf-8').strip()
-                collected_data_samples.append((helper.get_corrected_time(), stripped_line))
-            elif node_type == "receiver":
-                while((line := serial_device.readline())[0:4] != b'RECV'):
-                    print(line)
-                collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-            else:
-                log_status = f"Unknown device type {node_type}"
+    if log_status == "OK":
+        if node_type == "sender":
+            while((line := serial_device.readline()) != b'READY\r\n'):
+                process_log_message(line)
+            while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
+                pass
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+            line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
+            stripped_line = line.decode('utf-8').strip()
+            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
+        elif node_type == "receiver":
+            while((line := serial_device.readline())[0:4] != b'RECV'):
+                print(line)
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+        else:
+            log_status = f"Unknown device type {node_type}"
 
     serial_device.close()
     print("Finished logging -> powering down ESP32 ...")
