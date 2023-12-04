@@ -70,24 +70,24 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
     print("Powering up ESP32 ...")
     serial_device = helper.get_serial_device(vid_pid)
 
+    # Wait for the ESP to be ready (when it outputs "READY" to its serial)
+    while((line := serial_device.readline())[0:5] != b'Hello'):
+        process_log_message(line)
+    device_info = line.decode('utf-8').strip().split(':')
+    print(f"Type: {device_info[1]}, Version: {device_info[2]}")
+
+    if device_info[1] != node_type:
+        log_status = f"Wrong device type! -> has type {device_info[1]} ... should be type {node_type}"
+    if version != "debug" and device_info[2] == "not set":
+        log_status = "Device Version not set!"
+    elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
+        log_status = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
+
+    print(f"Version check: {log_status}")
+    if change_status:
+        change_status(log_status)
+
     while True:
-        # Wait for the ESP to be ready (when it outputs "READY" to its serial)
-        while((line := serial_device.readline())[0:5] != b'Hello'):
-            process_log_message(line)
-        device_info = line.decode('utf-8').strip().split(':')
-        print(f"Type: {device_info[1]}, Version: {device_info[2]}")
-
-        if device_info[1] != node_type:
-            log_status = f"Wrong device type! -> has type {device_info[1]} ... should be type {node_type}"
-        if version != "debug" and device_info[2] == "not set":
-            log_status = "Device Version not set!"
-        elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
-            log_status = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
-
-        print(f"Version check: {log_status}")
-        if change_status:
-            change_status(log_status)
-
         if log_status == "OK":
             if node_type == "sender":
                 while((line := serial_device.readline()) != b'READY\r\n'):
