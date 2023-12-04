@@ -6,28 +6,29 @@ import json
 import requests
 import ntplib
 
-c = ntplib.NTPClient()
+# c = ntplib.NTPClient()
 
-ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
+# ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
 
 config = configparser.ConfigParser()
 config.read("config.toml")
 
-def get_ntp_time_in_ms():
-    """
-    Get current time from NTP Server in ms
-    """
-    return c.request("europe.pool.ntp.org", version=3).tx_time * 1000
+# def get_ntp_time_in_ms():
+#     """
+#     Get current time from NTP Server in ms
+#     """
+#     return c.request("europe.pool.ntp.org", version=3).tx_time * 1000
 
 def get_corrected_time():
     """
     Get approximated ntp time (based on NTP Delta and system time)
     """
-    return (time.time() - ntp_delta) * 1000
+    return get_system_time_in_ms()
+    # return (time.time() - ntp_delta) * 1000
 
-def sync_ntp_corrected_time_delta():
-    global ntp_delta
-    ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
+# def sync_ntp_corrected_time_delta():
+#     global ntp_delta
+#     ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
 
 def get_system_time_in_ms():
     """

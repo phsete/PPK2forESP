@@ -54,12 +54,12 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
     background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type)
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
-@app.post("/sync")
-def sync_time():
-    old_delta = helper.ntp_delta
-    helper.sync_ntp_corrected_time_delta()
-    print(f"Synced time from {old_delta}s delta to {helper.ntp_delta}s delta")
-    return {"status": "OK"}
+# @app.post("/sync")
+# def sync_time():
+#     old_delta = helper.ntp_delta
+#     helper.sync_ntp_corrected_time_delta()
+#     print(f"Synced time from {old_delta}s delta to {helper.ntp_delta}s delta")
+#     return {"status": "OK"}
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
