@@ -37,7 +37,7 @@ def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, ver
     calculate_values(uuid)
     jobs[uuid].status = log_status
     log.ppk2_device_temp.ser.close()
-    time.sleep(1)
+    time.sleep(3)
     start(background_tasks, version, node_type)
 
 def change_status(uuid: UUID, log_status):
