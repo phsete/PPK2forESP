@@ -17,7 +17,7 @@ def start_sampling(ppk2_device):
     try:
 
         # read measured values
-        while not is_esp32_done.is_set():
+        while True:#not is_esp32_done.is_set():
             value_buffer.append((helper.get_corrected_time(), ppk2_device.get_data()))
             time.sleep(1/100000)
 
@@ -70,39 +70,40 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, node_type="sender"):
     print("Powering up ESP32 ...")
     serial_device = helper.get_serial_device(vid_pid)
 
-    # Wait for the ESP to be ready (when it outputs "READY" to its serial)
-    while((line := serial_device.readline())[0:5] != b'Hello'):
-        process_log_message(line)
-    device_info = line.decode('utf-8').strip().split(':')
-    print(f"Type: {device_info[1]}, Version: {device_info[2]}")
+    while True:
+        # Wait for the ESP to be ready (when it outputs "READY" to its serial)
+        while((line := serial_device.readline())[0:5] != b'Hello'):
+            process_log_message(line)
+        device_info = line.decode('utf-8').strip().split(':')
+        print(f"Type: {device_info[1]}, Version: {device_info[2]}")
 
-    if device_info[1] != node_type:
-        log_status = f"Wrong device type! -> has type {device_info[1]} ... should be type {node_type}"
-    if version != "debug" and device_info[2] == "not set":
-        log_status = "Device Version not set!"
-    elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
-        log_status = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
+        if device_info[1] != node_type:
+            log_status = f"Wrong device type! -> has type {device_info[1]} ... should be type {node_type}"
+        if version != "debug" and device_info[2] == "not set":
+            log_status = "Device Version not set!"
+        elif (version != "debug" and version != "latest" and device_info[2] != version) or (version != "debug" and version == "latest" and device_info[2] != latest_version):
+            log_status = f"Wrong version installed on ESP32 -> has version {device_info[2]} ... should be version {version}"
 
-    print(f"Version check: {log_status}")
-    if change_status:
-        change_status(log_status)
+        print(f"Version check: {log_status}")
+        if change_status:
+            change_status(log_status)
 
-    if log_status == "OK":
-        if node_type == "sender":
-            while((line := serial_device.readline()) != b'READY\r\n'):
-                process_log_message(line)
-            while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
-                pass
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-            line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-            stripped_line = line.decode('utf-8').strip()
-            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
-        elif node_type == "receiver":
-            while((line := serial_device.readline())[0:4] != b'RECV'):
-                print(line)
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-        else:
-            log_status = f"Unknown device type {node_type}"
+        if log_status == "OK":
+            if node_type == "sender":
+                while((line := serial_device.readline()) != b'READY\r\n'):
+                    process_log_message(line)
+                while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
+                    pass
+                collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+                line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
+                stripped_line = line.decode('utf-8').strip()
+                collected_data_samples.append((helper.get_corrected_time(), stripped_line))
+            elif node_type == "receiver":
+                while((line := serial_device.readline())[0:4] != b'RECV'):
+                    print(line)
+                collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
+            else:
+                log_status = f"Unknown device type {node_type}"
 
     serial_device.close()
     print("Finished logging -> powering down ESP32 ...")
@@ -129,26 +130,25 @@ def get_PPK2():
     return ppk2
 
 def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, change_status=None, node_type="sender"):
-    while True:
-        print("Starting Test ...")
+    print("Starting Test ...")
 
-        if(flash):
-            flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
+    if(flash):
+        flash_esp32(vid_pid=esp32_vid_pid, ppk2_device=ppk2_device)
 
-        init_values()
-        print(value_buffer)
+    init_values()
+    print(value_buffer)
 
-        sampler = Thread(target=start_sampling, args={ppk2_device})
-        logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status, node_type))
+    sampler = Thread(target=start_sampling, args={ppk2_device})
+    logger = Thread(target=log_esp32, args=(esp32_vid_pid, ppk2_device, version, change_status, node_type))
 
-        sampler.start()
-        logger.start()
-        sampler.join()
-        logger.join()
-        print("Finished Test")
+    sampler.start()
+    logger.start()
+    sampler.join()
+    logger.join()
+    print("Finished Test")
 
-        if callback:
-            callback(log_status)
+    if callback:
+        callback(log_status)
 
 def init_values():
     print("Resetting values for new Test run ...")
