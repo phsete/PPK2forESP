@@ -49,6 +49,7 @@ class Data:
             crc_str = "True"
         else:
             crc_str = "False"
+        print(f"{self.uuid}: {self.timestamp_recv}, {self.timestamp_send}")
         if self.timestamp_send and self.timestamp_recv:
             table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'crc_equal': crc_str, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
         else:
