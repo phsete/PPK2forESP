@@ -31,7 +31,7 @@ def start_task(uuid: UUID, func, *args) -> None:
 
 @app.get("/")
 def hello_world():
-    return {"Hello": "World", "status": "OK"}
+    return {"Hello": "World", "status": log.log_status}
 
 def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, version: str, node_type: str):
     # calculate_values(uuid)
@@ -55,6 +55,12 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
     jobs[new_job.uuid] = new_job
     background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
+
+@app.get("/stop/")
+def stop():
+    log.is_stopped.set()
+    log.log_status = "stopped" # could be done better with an actual result value
+    return {"status": log.log_status}
 
 # @app.post("/sync")
 # def sync_time():

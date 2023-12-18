@@ -69,6 +69,7 @@ class Node:
             self.ip = ip
             self.isPi = isPi
             self.is_connected = False
+            self.is_running = False
             self.logger_version_to_flash = logger_version_to_flash
             self.logger_type = logger_type
             self.jobs = {}
@@ -79,6 +80,7 @@ class Node:
             self.name = strings[1]
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
+            self.is_running = False
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
             self.logger_type = strings[5]
@@ -126,6 +128,9 @@ class Node:
                     if not(result2["status"] == "OK" or result2["status"] == "started" or result2["status"] == "created"):
                         # Error
                         ui.notify(f"Node {self.name} could not start test with status of '{result2['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                    else:
+                        self.is_running = True
+                        update_nodes()
                 else:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
@@ -174,6 +179,30 @@ class Node:
                 ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
         except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def stop_all(self, button: ui.button):
+        with disable(button, "Stopping all jobs"):
+            try:
+                if(self.is_connected):
+                    loop = asyncio.get_event_loop()
+                    future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/stop/", timeout=3600))
+                    response = await future1
+                    print(response)
+                    result = response.json()
+                    ui.notify(f"Node {self.name} stopping all tests ...", type='positive')
+                    time.sleep(3)
+                    future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=3600))
+                    response2 = await future2
+                    print(response2.text)
+                    result2 = response2.json()
+                    if result2["status"] == "stopped":
+                        self.is_running = False
+                        ui.notify(f"Node {self.name} stopped all tests successfully", type='positive')
+                    else:
+                        ui.notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
+                else:
+                    ui.notify(f"Node {self.name} not connected -> skipping stop for this node ...", type='info')
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def update_plot(self, button: ui.button):
         self.plot_dialog.clear()
         with self.plot_dialog:
@@ -333,6 +362,8 @@ def add_node_to_container(node: Node):
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
                 if node.is_connected:
+                    with ui.button(icon='close', on_click=lambda e: node.stop_all(e.sender)):
+                        ui.tooltip("Stop test")
                     with ui.button(icon='play_arrow', on_click=lambda e: node.start_test(e.sender)):
                         ui.tooltip("Run test")
                     with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
