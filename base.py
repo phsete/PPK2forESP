@@ -100,7 +100,7 @@ class Node:
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
                 result = response.json()
-                if result["status"] == "OK":
+                if result["status"] == "OK" or result["status"] == "stopped":
                     self.is_connected = True
                     update_diagram()
                     update_nodes()
