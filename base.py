@@ -1,5 +1,5 @@
 from nicegui import ui
-from typing import List
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 from websockets import client
 import json
@@ -14,11 +14,17 @@ from contextlib import contextmanager
 import requests
 import time
 import asyncio
-from typing import Dict
+from pydantic import BaseModel
 
-class Job:
-    def __init__(self, uuid: UUID, averages, data_samples):
-        self.uuid = uuid
+class Job(BaseModel):
+    uuid: str
+    version: str
+    type: str
+    started_at: float
+    averages: Optional[List[Dict]] = None
+    data_samples: Optional[List[Dict]] = None
+
+    def add_data(self, averages: List[Dict], data_samples: List[Dict]):
         self.averages = averages
         self.data_samples = data_samples
 
@@ -65,7 +71,7 @@ class Node:
             self.is_connected = False
             self.logger_version_to_flash = logger_version_to_flash
             self.logger_type = logger_type
-            self.jobs = []
+            self.jobs = {}
             self.rendered_plot_once = False
         else:
             strings = save_string[1:-2].split(",")
@@ -76,7 +82,7 @@ class Node:
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
             self.logger_type = strings[5]
-            self.jobs = [] # could be saved and reloaded here
+            self.jobs = {} # could be saved and reloaded here
             self.rendered_plot_once = False
         self.plot_dialog = create_plot_dialog()
     def __str__(self) -> str:
@@ -109,7 +115,8 @@ class Node:
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
-                    self.latest_job_uuid = result["uuid"]
+                    latest_job_uuid = result["uuid"]
+                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000)
                     ui.notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
                     time.sleep(3)
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
@@ -157,10 +164,12 @@ class Node:
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/jobs", timeout=3600))
                 response = await future1
                 result = response.json()
-                self.jobs = [Job(uuid, result[uuid]["collected_power_samples"], result[uuid]["collected_data_samples"]) for uuid in [*result]]
+                for uuid in [*result]:
+                    self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
-                with open(f"result-{self.uuid}.json", "w") as outfile:
-                    outfile.write(json.dumps(result))
+                for key, job in self.jobs.items():
+                    with open(f"result-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
+                        outfile.write(job.model_dump_json(indent=4))
             else:
                 ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
         except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
@@ -178,14 +187,14 @@ class Node:
                 fig.update_xaxes(title_text="Time [ms]")
                 fig.update_yaxes(title_text="Power [uA]")
                 i = 0
-                for job in self.jobs:
-                    fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
+                for key, job in self.jobs.items():
+                    fig.add_trace(go.Scatter(x=[x.get("time") for x in job.averages], y=[x.get("value") for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
                     for data in job.data_samples:
                         fig.add_vline(
-                            x=data[0], line_width=3, line_dash="dash", 
+                            x=data.get("time"), line_width=3, line_dash="dash", 
                             line_color=plotly_colors.qualitative.Plotly[i],
                             annotation=dict(
-                                text=f"{i}: {data[1]}",
+                                text=f"{i}: {data.get('value')}",
                                 textangle=-90)
                             )
                     i += 1
@@ -373,9 +382,10 @@ def load_from_file(container):
 async def update_data_values():
     for node in nodes:
         await node.get_jobs()
-        for job in node.jobs:
+        for key, job in node.jobs.items():
             for data in job.data_samples:
-                text = str(data[1]).split(';')
+                raw_value = str(data.get("value"))
+                text = raw_value.split(';')
                 if len(text) > 1 :
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
                         value, uuid, created_by_mac, crc_equal = text
@@ -384,9 +394,10 @@ async def update_data_values():
                     if uuid not in data_values.keys():
                         data_values[uuid] = Data()
                     if node.logger_type == "sender":
-                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data[0])
+                        print(value)
+                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data.get("time"))
                     elif node.logger_type == "receiver":
-                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data[0])
+                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data.get("time"))
 
 async def update_table():
     table_area.clear()
