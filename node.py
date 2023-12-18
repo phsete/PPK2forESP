@@ -58,8 +58,10 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
 
 @app.get("/stop/")
 def stop():
+    global jobs
     log.is_stopped.set()
     log.log_status = "stopped" # could be done better with an actual result value
+    jobs = {}
     return {"status": log.log_status}
 
 # @app.post("/sync")

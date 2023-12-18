@@ -10,7 +10,7 @@ import plotly.colors as plotly_colors
 import pandas as pd
 import configparser
 import helper
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import requests
 import time
 from datetime import datetime
@@ -28,6 +28,32 @@ class Job(BaseModel):
     def add_data(self, averages: List[Dict], data_samples: List[Dict]):
         self.averages.extend(averages)
         self.data_samples.extend(data_samples)
+
+class Periodic:
+    def __init__(self, func, time):
+        self.func = func
+        self.time = time
+        self.is_started = False
+        self._task = None
+
+    async def start(self):
+        if not self.is_started:
+            self.is_started = True
+            # Start task to call func periodically:
+            self._task = asyncio.ensure_future(self._run())
+
+    async def stop(self):
+        if self.is_started:
+            self.is_started = False
+            # Stop task and await it stopped:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task
+
+    async def _run(self):
+        while True:
+            await asyncio.sleep(self.time)
+            await self.func()
 
 class Data:
     def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, crc_equal: bool = None, timestamp_send: float = None, timestamp_recv: float = None):
@@ -100,6 +126,7 @@ class Node:
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
                 result = response.json()
+                print(result["status"])
                 if result["status"] == "OK" or result["status"] == "stopped":
                     self.is_connected = True
                     update_diagram()
@@ -132,6 +159,10 @@ class Node:
                     else:
                         self.is_running = True
                         update_nodes()
+                        # try:
+                        #     loop.run_until_complete(poll_task)
+                        # except asyncio.CancelledError:
+                        #     pass
                 else:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
@@ -198,6 +229,8 @@ class Node:
                     result2 = response2.json()
                     if result2["status"] == "stopped":
                         self.is_running = False
+                        if poll_periodic:
+                            poll_periodic.stop()
                         ui.notify(f"Node {self.name} stopped all tests successfully", type='positive')
                     else:
                         ui.notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
@@ -246,6 +279,11 @@ class Node:
             self.logger_type = "receiver"
         else:
             self.logger_type = "sender"
+
+async def start_poll():
+    global poll_periodic
+    poll_periodic = Periodic(update_table, 10)
+    await poll_periodic.start()
 
 nodes : List[Node] = []
 
@@ -370,8 +408,6 @@ def add_node_to_container(node: Node):
                         ui.tooltip("Run test")
                     with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
                         ui.tooltip("Show Plot")
-                    with ui.button(icon='play_arrow', on_click=lambda e: node.sync_time(e.sender)):
-                        ui.tooltip("Sync Time")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=lambda e: node.connect_to_device(e.sender)):
                         ui.tooltip("Connect Node to Device")
@@ -498,6 +534,8 @@ with ui.row().style("margin: auto;"):
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
     with ui.button(icon="refresh", on_click=lambda: update_table()):
+        ui.tooltip("Update Table")
+    with ui.button(icon="replay_10", on_click=start_poll):
         ui.tooltip("Update Table")
 
 ui.separator().style("top: 50px; bottom: 50px;")
