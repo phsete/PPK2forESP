@@ -13,6 +13,7 @@ import helper
 from contextlib import contextmanager
 import requests
 import time
+from datetime import datetime
 import asyncio
 from pydantic import BaseModel
 
@@ -21,12 +22,12 @@ class Job(BaseModel):
     version: str
     type: str
     started_at: float
-    averages: Optional[List[Dict]] = None
-    data_samples: Optional[List[Dict]] = None
+    averages: Optional[List[Dict]] = []
+    data_samples: Optional[List[Dict]] = []
 
     def add_data(self, averages: List[Dict], data_samples: List[Dict]):
-        self.averages = averages
-        self.data_samples = data_samples
+        self.averages.extend(averages)
+        self.data_samples.extend(data_samples)
 
 class Data:
     def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, crc_equal: bool = None, timestamp_send: float = None, timestamp_recv: float = None):
@@ -170,10 +171,11 @@ class Node:
                 response = await future1
                 result = response.json()
                 for uuid in [*result]:
+                    print("Result has length: ", len(result[uuid]["collected_power_samples"]))
                     self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 for key, job in self.jobs.items():
-                    with open(f"result-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
+                    with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
                         outfile.write(job.model_dump_json(indent=4))
             else:
                 ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')

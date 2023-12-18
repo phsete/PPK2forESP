@@ -93,6 +93,8 @@ def get_jobs():
         # if(job.status == "started" or job.status == "OK"):
         #     calculate_values(uuid)
         response[str(uuid)] = {"collected_power_samples": job.collected_power_samples, "collected_data_samples": job.collected_data_samples}
+        job.collected_data_samples = []
+        job.collected_power_samples = []
     return response
     
 def calculate_values(uuid: UUID):
