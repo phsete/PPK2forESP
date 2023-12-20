@@ -221,7 +221,7 @@ class Node:
                     print(response)
                     result = response.json()
                     ui.notify(f"Node {self.name} stopping all tests ...", type='positive')
-                    time.sleep(3)
+                    time.sleep(5) # wait for possible calculation to finish
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=3600))
                     response2 = await future2
                     print(response2.text)

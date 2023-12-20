@@ -62,6 +62,12 @@ def stop():
         calculate_values(uuid)
     response = get_jobs()
     jobs = {}
+    while not log.is_esp32_done.is_set():
+        pass
+    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+        log.ppk2_device_temp.ser.close()
+    else:
+        print("Error while stopping jobs. No PPK2 device or corresponding Serial device set.")
     print("All Jobs stopped.")
     return {"status": log.log_status, **response}
 
