@@ -103,14 +103,6 @@ def calculate_values(uuid: UUID):
     jobs[uuid].collected_data_samples.extend(collected_data_samples_return)
 
 
-@app.get("/values/")
-def values(uuid: UUID):
-    selected_job = jobs[uuid] if uuid in jobs else None
-    if selected_job:
-        calculate_values(uuid)
-        return 
-    else:
-        return {"error": "Job with specified UUID not found."}
 
 async def process_message(message):
     data = json.loads(message)
