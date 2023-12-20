@@ -68,29 +68,6 @@ def process_serial(line, node_type, version, latest_version, change_status, log_
 
     return log_status
 
-    # Wait for the ESP to be ready (when it outputs "READY" to its serial)
-    while((line := serial_device.readline())[0:5] != b'Hello'):
-        process_log_message(line)
-    
-    log_status = check_version(line, node_type, version, latest_version, change_status)
-
-    if log_status == "OK":
-        if node_type == "sender":
-            while((line := serial_device.readline()) != b'READY\r\n'):
-                process_log_message(line)
-            while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
-                pass
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-            line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-            stripped_line = line.decode('utf-8').strip()
-            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
-        elif node_type == "receiver":
-            while((line := serial_device.readline())[0:4] != b'RECV'):
-                print(line)
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-        else:
-            log_status = f"Unknown device type {node_type}"
-
 def check_version(line, node_type, version, latest_version, change_status, log_status):
     device_info = line.decode('utf-8').strip().split(':')
     print(f"Type: {device_info[1]}, Version: {device_info[2]}")
