@@ -5,7 +5,7 @@ import esptool
 import time
 import helper
 
-ppk2_device_temp = None
+ppk2_device_temp: PPK2_API | None = None
 
 def start_sampling(ppk2_device):
     global is_sampling

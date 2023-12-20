@@ -82,27 +82,22 @@ def get_jobs():
 def calculate_values(uuid: UUID):
     print("Calculating values ...")
 
+    # Get values from the buffer and reset the buffer directly to not loose any sampled data
     values = log.value_buffer
     log.value_buffer = []
 
-    collected_power_samples_return = []
-
-    collected_data_samples_return = log.collected_data_samples
-    print(collected_data_samples_return)
+    # extend the collected data samples and clear the logging buffer
+    jobs[uuid].collected_data_samples.extend(log.collected_data_samples)1
     log.collected_data_samples = []
-    print(collected_data_samples_return)
 
+    # get the correct power readings and append them to the job
     for timestamp, value in values:
         if value != b'':
             samples, raw_output = log.ppk2_device_temp.get_samples(value)
             average = sum(samples)/len(samples)
-            collected_power_samples_return.append((timestamp, average))
+            jobs[uuid].collected_power_samples.append((timestamp, average))
 
-    print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
-    jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
-    jobs[uuid].collected_data_samples.extend(collected_data_samples_return)
-
-
+    print(f"Finished calculating values -> got {len(jobs[uuid].collected_power_samples)} overall averages")
 
 async def process_message(message):
     data = json.loads(message)
@@ -135,5 +130,4 @@ async def main():
 
 if __name__ == "__main__":    
     helper.download_asset_from_release("sender.bin", "firmware.bin")
-
     uvicorn.run("node:app", host='0.0.0.0', port= 8000, loop='asyncio')
