@@ -3,11 +3,8 @@ from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 from websockets import client
 import json
-from matplotlib import pyplot as plt
-import plotly.express as px
 import plotly.graph_objects as go
 import plotly.colors as plotly_colors
-import pandas as pd
 import configparser
 import helper
 from contextlib import contextmanager, suppress
@@ -66,14 +63,11 @@ class Data:
 
     def parse_sender_data(self, value: int, uuid: str, created_by_mac: str, timestamp: float):
         self.uuid = uuid
-        # self.value = value
         self.created_by_mac = created_by_mac
         self.timestamp_send = timestamp
 
     def parse_receiver_data(self, value: int, uuid: str, created_by_mac: str, crc_equal: bool, timestamp: float):
-        # self.uuid = uuid
         self.value = value
-        # self.created_by_mac = created_by_mac
         self.crc_equal = crc_equal
         self.timestamp_recv = timestamp
 
@@ -159,10 +153,6 @@ class Node:
                     else:
                         self.is_running = True
                         update_nodes()
-                        # try:
-                        #     loop.run_until_complete(poll_task)
-                        # except asyncio.CancelledError:
-                        #     pass
                 else:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:

@@ -3,17 +3,12 @@ import websockets
 import json
 import log
 import helper
-import time
+import uvicorn
 
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
 from fastapi import BackgroundTasks
 from typing import Dict
-from concurrent.futures.process import ProcessPoolExecutor
-from contextlib import asynccontextmanager
-from http import HTTPStatus
-import uvicorn
 
 class Job():
     def __init__(self):
@@ -33,14 +28,9 @@ def start_task(uuid: UUID, func, *args) -> None:
 def hello_world():
     return {"Hello": "World", "status": log.log_status}
 
-def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, version: str, node_type: str):
-    # calculate_values(uuid)
+def test_callback(uuid: UUID, log_status):
     jobs[uuid].status = log_status
     log.ppk2_device_temp.ser.close()
-    # time.sleep(3)
-    # start(background_tasks, version, node_type)
-    # log.ppk2_device_temp = log.get_PPK2()
-    # background_tasks.add_task(start_task, uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(uuid, log_status), node_type)
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -49,11 +39,10 @@ def change_status(uuid: UUID, log_status):
 
 @app.post("/start/")
 def start(background_tasks: BackgroundTasks, version: str, node_type: str):
-    # print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
 @app.get("/stop/")
@@ -63,13 +52,6 @@ def stop():
     log.log_status = "stopped" # could be done better with an actual result value
     jobs = {}
     return {"status": log.log_status}
-
-# @app.post("/sync")
-# def sync_time():
-#     old_delta = helper.ntp_delta
-#     helper.sync_ntp_corrected_time_delta()
-#     print(f"Synced time from {old_delta}s delta to {helper.ntp_delta}s delta")
-#     return {"status": "OK"}
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
@@ -92,8 +74,6 @@ def get_jobs():
     response = {}
     for uuid, job in jobs.items():
         print(job.status)
-        # if(job.status == "started" or job.status == "OK"):
-        #     calculate_values(uuid)
         response[str(uuid)] = {"collected_power_samples": job.collected_power_samples, "collected_data_samples": job.collected_data_samples}
         job.collected_data_samples = []
         job.collected_power_samples = []
