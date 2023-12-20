@@ -20,13 +20,13 @@ def get_system_time_in_ms():
     """
     return time.time() * 1000
 
-def find_serial_device(device_signature: str):
+def find_serial_device(device_signature: str) -> str | None:
     candidates = list(list_ports.grep(device_signature))
     if not candidates:
         return None
     if len(candidates) > 1:
         exit(f'More than one device with signature {device_signature} found. Please remove every device that is not going to be used.')
-    return candidates[0].device
+    return candidates[0].device # type: ignore
 
 def get_serial_device(device_signature: str):
     while not (port := find_serial_device(device_signature)):

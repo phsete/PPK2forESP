@@ -30,7 +30,10 @@ def hello_world():
 
 def test_callback(uuid: UUID, log_status):
     jobs[uuid].status = log_status
-    log.ppk2_device_temp.ser.close()
+    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+        log.ppk2_device_temp.ser.close()
+    else:
+        print("Error with Callback. No PPK2 device or corresponding Serial device set.")
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -87,15 +90,18 @@ def calculate_values(uuid: UUID):
     log.value_buffer = []
 
     # extend the collected data samples and clear the logging buffer
-    jobs[uuid].collected_data_samples.extend(log.collected_data_samples)1
+    jobs[uuid].collected_data_samples.extend(log.collected_data_samples)
     log.collected_data_samples = []
 
     # get the correct power readings and append them to the job
     for timestamp, value in values:
         if value != b'':
-            samples, raw_output = log.ppk2_device_temp.get_samples(value)
-            average = sum(samples)/len(samples)
-            jobs[uuid].collected_power_samples.append((timestamp, average))
+            if log.ppk2_device_temp:
+                samples, raw_output = log.ppk2_device_temp.get_samples(value)
+                average = sum(samples)/len(samples)
+                jobs[uuid].collected_power_samples.append((timestamp, average))
+            else:
+                print("Error while calculating values. No PPK2 device set.")
 
     print(f"Finished calculating values -> got {len(jobs[uuid].collected_power_samples)} overall averages")
 
@@ -103,8 +109,8 @@ async def process_message(message):
     data = json.loads(message)
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
-        (log_status, collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
-        return json.dumps({"status": log_status, "power_samples": collected_power_samples, "data_samples": collected_data_samples})
+        log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
+        return "started"
     elif data["type"] == "flash":
         helper.download_asset_from_release("sender.bin", "firmware.bin", data["version"])
         print(f"downloaded version {data['version']}")
@@ -125,7 +131,7 @@ async def respond(websocket):
     # print(f">>> {outgoing}")
 
 async def main():
-    async with websockets.serve(respond, "0.0.0.0", helper.config["general"]["WebsocketPort"]):
+    async with websockets.serve(respond, "0.0.0.0", helper.config["general"]["WebsocketPort"]): # type: ignore
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":    

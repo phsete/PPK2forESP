@@ -111,12 +111,19 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, calculate_values, no
     ppk2_device.stop_measuring()
     is_esp32_done.set()
 
-def get_PPK2():
+def get_PPK2() -> PPK2_API | None:
+    """Get a connected PPK2 device.
+
+    Returns:
+        PPK2_API | None: Returns a PPK2_API object if a PPK2 device was found. Returns None if none was found.
+    """
     print("Looking for PPK2 device ...")
+    ppk2 = None
     try:
         if((ppk2_port := helper.find_serial_device("PPK2")) == None):
             log_status = "ERROR: No PPK2 device found!"
             print(log_status)
+            return
         ppk2 = PPK2_API(ppk2_port)
         ppk2.get_modifiers()
         ppk2.use_ampere_meter()

@@ -1,11 +1,13 @@
 from nicegui import ui
-from typing import Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 from uuid import UUID, uuid4
 from websockets import client
 import json
 import plotly.graph_objects as go
 import plotly.colors as plotly_colors
 import configparser
+
+import websockets.typing
 import helper
 from contextlib import contextmanager, suppress
 import requests
@@ -23,8 +25,15 @@ class Job(BaseModel):
     data_samples: Optional[List[Dict]] = []
 
     def add_data(self, averages: List[Dict], data_samples: List[Dict]):
-        self.averages.extend(averages)
-        self.data_samples.extend(data_samples)
+        if self.averages:
+            self.averages.extend(averages)
+        else:
+            self.averages = averages
+        
+        if self.data_samples:
+            self.data_samples.extend(data_samples)
+        else:
+            self.data_samples = data_samples
 
 class Periodic:
     def __init__(self, func, time):
@@ -53,7 +62,7 @@ class Periodic:
             await self.func()
 
 class Data:
-    def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, crc_equal: bool = None, timestamp_send: float = None, timestamp_recv: float = None):
+    def __init__(self, uuid: str | None = None, value: int | None = None, created_by_mac: str | None = None, crc_equal: bool | None = None, timestamp_send: float | None = None, timestamp_recv: float | None = None):
         self.uuid = uuid
         self.value = value
         self.created_by_mac = created_by_mac
@@ -83,7 +92,7 @@ class Data:
             table.add_rows({'uuid': self.uuid, 'value': "ERROR"})
 
 class Node:
-    def __init__(self, name="", ip="", isPi=False, save_string: str = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
+    def __init__(self, name="", ip="", isPi=False, save_string: str | None = None, logger_version_to_flash = "latest", logger_type = "sender") -> None:
         if not save_string:
             self.uuid = uuid4()
             self.name = name
@@ -220,7 +229,7 @@ class Node:
                     if result2["status"] == "stopped":
                         self.is_running = False
                         if poll_periodic:
-                            poll_periodic.stop()
+                            await poll_periodic.stop()
                         ui.notify(f"Node {self.name} stopped all tests successfully", type='positive')
                     else:
                         ui.notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
@@ -358,7 +367,7 @@ def version_select(node: Node, version_name):
     return version_name
 
 @contextmanager
-def disable(button: ui.button, status_text, container=None, remove_container_afterwards=False) -> None:
+def disable(button: ui.button, status_text, container=None, remove_container_afterwards=False) -> Generator[Any, Any, Any]:
     button.disable()
     with ui.row().classes("w-56") as row:
         ui.label(status_text).classes("w-22 animate-pulse")
@@ -371,7 +380,8 @@ def disable(button: ui.button, status_text, container=None, remove_container_aft
             row.delete()
             button.enable()
             if remove_container_afterwards:
-                container.delete()
+                if container:
+                    container.delete()
 
 def add_node_to_container(node: Node):
     with container:
@@ -413,7 +423,7 @@ def remove_node(node: Node, card: ui.card, container):
     update_diagram()
     container.remove(list(container).index(card)) if list(container) else None
 
-def add_node(node: Node, dialog: ui.dialog = None):
+def add_node(node: Node, dialog: ui.dialog | None = None):
     if dialog:
         dialog.close()
     nodes.append(node)
@@ -447,16 +457,17 @@ async def update_data_values():
                 text = raw_value.split(';')
                 if len(text) > 1 :
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
+                        # should be receiver
                         value, uuid, created_by_mac, crc_equal = text
+                        if uuid not in data_values.keys():
+                            data_values[uuid] = Data()
+                        data_values[uuid].parse_receiver_data(int(value), uuid, created_by_mac, bool(crc_equal), data.get("time"))
                     else:
+                        # should be sender
                         value, uuid, created_by_mac = text
-                    if uuid not in data_values.keys():
-                        data_values[uuid] = Data()
-                    if node.logger_type == "sender":
-                        print(value)
-                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data.get("time"))
-                    elif node.logger_type == "receiver":
-                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data.get("time"))
+                        if uuid not in data_values.keys():
+                            data_values[uuid] = Data()
+                        data_values[uuid].parse_sender_data(int(value), uuid, created_by_mac, data.get("time"))
 
 async def update_table():
     table_area.clear()
@@ -482,7 +493,7 @@ async def update_table():
         data.add_to_table(table)
                     
 
-async def send_json_data(uri, data) -> str:
+async def send_json_data(uri, data) -> websockets.typing.Data:
     message = json.dumps(data)
     try:
         async with client.connect(uri) as websocket:
@@ -525,7 +536,7 @@ with ui.row().style("margin: auto;"):
         ui.tooltip("Load from File 'nodes.save'")
     with ui.button(icon="refresh", on_click=lambda: update_table()):
         ui.tooltip("Update Table")
-    with ui.button(icon="replay_10", on_click=start_poll):
+    with ui.button(icon="replay_10", on_click=start_poll): # type: ignore
         ui.tooltip("Update Table")
 
 ui.separator().style("top: 50px; bottom: 50px;")
