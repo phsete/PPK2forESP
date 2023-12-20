@@ -19,6 +19,7 @@ class Job():
 
 app = FastAPI()
 jobs: Dict[UUID, Job] = {}
+calculating_values = False
 
 def start_task(uuid: UUID, func, *args) -> None:
     jobs[uuid].status = "started"
@@ -51,10 +52,18 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
 @app.get("/stop/")
 def stop():
     global jobs
+    print("Stopping all jobs ...")
     log.is_stopped.set()
+    while calculating_values:
+        # wait for calculation to finish (if a calculation is still running)
+        pass
     log.log_status = "stopped" # could be done better with an actual result value
+    for uuid, job in jobs.items():
+        calculate_values(uuid)
+    response = get_jobs()
     jobs = {}
-    return {"status": log.log_status}
+    print("All Jobs stopped.")
+    return {"status": log.log_status, **response}
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
@@ -83,7 +92,9 @@ def get_jobs():
     return response
     
 def calculate_values(uuid: UUID):
+    global calculating_values
     print("Calculating values ...")
+    calculating_values = True
 
     # Get values from the buffer and reset the buffer directly to not loose any sampled data
     values = log.value_buffer
@@ -103,6 +114,7 @@ def calculate_values(uuid: UUID):
             else:
                 print("Error while calculating values. No PPK2 device set.")
 
+    calculating_values = False
     print(f"Finished calculating values -> got {len(jobs[uuid].collected_power_samples)} overall averages")
 
 async def process_message(message):

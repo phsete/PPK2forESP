@@ -153,7 +153,7 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, c
     logger.join()
     print("Finished Test")
 
-    if callback:
+    if callback and not is_stopped.is_set():
         callback(log_status)
 
 def init_values():
