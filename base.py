@@ -1,5 +1,5 @@
 from nicegui import ui
-from typing import List
+from typing import Dict, List, Optional
 from uuid import UUID, uuid4
 from websockets import client
 import json
@@ -10,17 +10,50 @@ import plotly.colors as plotly_colors
 import pandas as pd
 import configparser
 import helper
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import requests
 import time
+from datetime import datetime
 import asyncio
-from typing import Dict
+from pydantic import BaseModel
 
-class Job:
-    def __init__(self, uuid: UUID, averages, data_samples):
-        self.uuid = uuid
-        self.averages = averages
-        self.data_samples = data_samples
+class Job(BaseModel):
+    uuid: str
+    version: str
+    type: str
+    started_at: float
+    averages: Optional[List[Dict]] = []
+    data_samples: Optional[List[Dict]] = []
+
+    def add_data(self, averages: List[Dict], data_samples: List[Dict]):
+        self.averages.extend(averages)
+        self.data_samples.extend(data_samples)
+
+class Periodic:
+    def __init__(self, func, time):
+        self.func = func
+        self.time = time
+        self.is_started = False
+        self._task = None
+
+    async def start(self):
+        if not self.is_started:
+            self.is_started = True
+            # Start task to call func periodically:
+            self._task = asyncio.ensure_future(self._run())
+
+    async def stop(self):
+        if self.is_started:
+            self.is_started = False
+            # Stop task and await it stopped:
+            self._task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._task
+
+    async def _run(self):
+        while True:
+            await asyncio.sleep(self.time)
+            await self.func()
 
 class Data:
     def __init__(self, uuid: str = None, value: int = None, created_by_mac: str = None, crc_equal: bool = None, timestamp_send: float = None, timestamp_recv: float = None):
@@ -45,10 +78,11 @@ class Data:
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
-        if self.crc_equal:
+        if self.crc_equal == "1":
             crc_str = "True"
         else:
             crc_str = "False"
+        print(f"{self.uuid}: {self.timestamp_recv}, {self.timestamp_send}")
         if self.timestamp_send and self.timestamp_recv:
             table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'crc_equal': crc_str, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
         else:
@@ -62,9 +96,10 @@ class Node:
             self.ip = ip
             self.isPi = isPi
             self.is_connected = False
+            self.is_running = False
             self.logger_version_to_flash = logger_version_to_flash
             self.logger_type = logger_type
-            self.jobs = []
+            self.jobs = {}
             self.rendered_plot_once = False
         else:
             strings = save_string[1:-2].split(",")
@@ -72,10 +107,11 @@ class Node:
             self.name = strings[1]
             self.ip = strings[2]
             self.isPi = strings[3] == "True"
+            self.is_running = False
             self.is_connected = False
             self.logger_version_to_flash = strings[4]
             self.logger_type = strings[5]
-            self.jobs = [] # could be saved and reloaded here
+            self.jobs = {} # could be saved and reloaded here
             self.rendered_plot_once = False
         self.plot_dialog = create_plot_dialog()
     def __str__(self) -> str:
@@ -90,7 +126,8 @@ class Node:
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
                 result = response.json()
-                if result["status"] == "OK":
+                print(result["status"])
+                if result["status"] == "OK" or result["status"] == "stopped":
                     self.is_connected = True
                     update_diagram()
                     update_nodes()
@@ -108,7 +145,8 @@ class Node:
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
-                    self.latest_job_uuid = result["uuid"]
+                    latest_job_uuid = result["uuid"]
+                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000)
                     ui.notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
                     time.sleep(3)
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
@@ -118,6 +156,13 @@ class Node:
                     if not(result2["status"] == "OK" or result2["status"] == "started" or result2["status"] == "created"):
                         # Error
                         ui.notify(f"Node {self.name} could not start test with status of '{result2['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                    else:
+                        self.is_running = True
+                        update_nodes()
+                        # try:
+                        #     loop.run_until_complete(poll_task)
+                        # except asyncio.CancelledError:
+                        #     pass
                 else:
                     ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
@@ -156,14 +201,43 @@ class Node:
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/jobs", timeout=3600))
                 response = await future1
                 result = response.json()
-                self.jobs = [Job(uuid, result[uuid]["collected_power_samples"], result[uuid]["collected_data_samples"]) for uuid in [*result]]
+                for uuid in [*result]:
+                    print("Result has length: ", len(result[uuid]["collected_power_samples"]))
+                    self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
-                with open(f"result-{self.uuid}.json", "w") as outfile:
-                    outfile.write(json.dumps(result))
+                for key, job in self.jobs.items():
+                    with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
+                        outfile.write(job.model_dump_json(indent=4))
             else:
                 ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
         except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
             ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+    async def stop_all(self, button: ui.button):
+        with disable(button, "Stopping all jobs"):
+            try:
+                if(self.is_connected):
+                    loop = asyncio.get_event_loop()
+                    future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/stop/", timeout=3600))
+                    response = await future1
+                    print(response)
+                    result = response.json()
+                    ui.notify(f"Node {self.name} stopping all tests ...", type='positive')
+                    time.sleep(3)
+                    future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=3600))
+                    response2 = await future2
+                    print(response2.text)
+                    result2 = response2.json()
+                    if result2["status"] == "stopped":
+                        self.is_running = False
+                        if poll_periodic:
+                            poll_periodic.stop()
+                        ui.notify(f"Node {self.name} stopped all tests successfully", type='positive')
+                    else:
+                        ui.notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
+                else:
+                    ui.notify(f"Node {self.name} not connected -> skipping stop for this node ...", type='info')
+            except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
+                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def update_plot(self, button: ui.button):
         self.plot_dialog.clear()
         with self.plot_dialog:
@@ -177,14 +251,14 @@ class Node:
                 fig.update_xaxes(title_text="Time [ms]")
                 fig.update_yaxes(title_text="Power [uA]")
                 i = 0
-                for job in self.jobs:
-                    fig.add_trace(go.Scatter(x=[x[0] for x in job.averages], y=[x[1] for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
+                for key, job in self.jobs.items():
+                    fig.add_trace(go.Scatter(x=[x.get("time") for x in job.averages], y=[x.get("value") for x in job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{i}: {job.uuid}"))
                     for data in job.data_samples:
                         fig.add_vline(
-                            x=data[0], line_width=3, line_dash="dash", 
+                            x=data.get("time"), line_width=3, line_dash="dash", 
                             line_color=plotly_colors.qualitative.Plotly[i],
                             annotation=dict(
-                                text=f"{i}: {data[1]}",
+                                text=f"{i}: {data.get('value')}",
                                 textangle=-90)
                             )
                     i += 1
@@ -205,6 +279,11 @@ class Node:
             self.logger_type = "receiver"
         else:
             self.logger_type = "sender"
+
+async def start_poll():
+    global poll_periodic
+    poll_periodic = Periodic(update_table, 10)
+    await poll_periodic.start()
 
 nodes : List[Node] = []
 
@@ -323,12 +402,12 @@ def add_node_to_container(node: Node):
                 with ui.button(icon='edit', on_click=lambda: edit_node(node, tempCard)):
                     ui.tooltip("Edit this Node")
                 if node.is_connected:
+                    with ui.button(icon='close', on_click=lambda e: node.stop_all(e.sender)):
+                        ui.tooltip("Stop test")
                     with ui.button(icon='play_arrow', on_click=lambda e: node.start_test(e.sender)):
                         ui.tooltip("Run test")
                     with ui.button(icon="refresh", on_click=lambda e: node.show_plot(e.sender)):
                         ui.tooltip("Show Plot")
-                    with ui.button(icon='play_arrow', on_click=lambda e: node.sync_time(e.sender)):
-                        ui.tooltip("Sync Time")
                 if not node.is_connected:
                     with ui.button(icon='link', on_click=lambda e: node.connect_to_device(e.sender)):
                         ui.tooltip("Connect Node to Device")
@@ -372,9 +451,10 @@ def load_from_file(container):
 async def update_data_values():
     for node in nodes:
         await node.get_jobs()
-        for job in node.jobs:
+        for key, job in node.jobs.items():
             for data in job.data_samples:
-                text = str(data[1]).split(';')
+                raw_value = str(data.get("value"))
+                text = raw_value.split(';')
                 if len(text) > 1 :
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
                         value, uuid, created_by_mac, crc_equal = text
@@ -383,9 +463,10 @@ async def update_data_values():
                     if uuid not in data_values.keys():
                         data_values[uuid] = Data()
                     if node.logger_type == "sender":
-                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data[0])
+                        print(value)
+                        data_values[uuid].parse_sender_data(value, uuid, created_by_mac, data.get("time"))
                     elif node.logger_type == "receiver":
-                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data[0])
+                        data_values[uuid].parse_receiver_data(value, uuid, created_by_mac, crc_equal, data.get("time"))
 
 async def update_table():
     table_area.clear()
@@ -453,6 +534,8 @@ with ui.row().style("margin: auto;"):
     with ui.button(icon="file_open", on_click=lambda: load_from_file(container)):
         ui.tooltip("Load from File 'nodes.save'")
     with ui.button(icon="refresh", on_click=lambda: update_table()):
+        ui.tooltip("Update Table")
+    with ui.button(icon="replay_10", on_click=start_poll):
         ui.tooltip("Update Table")
 
 ui.separator().style("top: 50px; bottom: 50px;")

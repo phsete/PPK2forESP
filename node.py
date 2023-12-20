@@ -31,16 +31,16 @@ def start_task(uuid: UUID, func, *args) -> None:
 
 @app.get("/")
 def hello_world():
-    return {"Hello": "World", "status": "OK"}
+    return {"Hello": "World", "status": log.log_status}
 
 def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, version: str, node_type: str):
-    calculate_values(uuid)
+    # calculate_values(uuid)
     jobs[uuid].status = log_status
     log.ppk2_device_temp.ser.close()
-    time.sleep(3)
-    start(background_tasks, version, node_type)
-    log.ppk2_device_temp = log.get_PPK2()
-    background_tasks.add_task(start_task, uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(uuid, log_status), node_type)
+    # time.sleep(3)
+    # start(background_tasks, version, node_type)
+    # log.ppk2_device_temp = log.get_PPK2()
+    # background_tasks.add_task(start_task, uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(uuid, log_status), node_type)
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -53,8 +53,16 @@ def start(background_tasks: BackgroundTasks, version: str, node_type: str):
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type)
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
+
+@app.get("/stop/")
+def stop():
+    global jobs
+    log.is_stopped.set()
+    log.log_status = "stopped" # could be done better with an actual result value
+    jobs = {}
+    return {"status": log.log_status}
 
 # @app.post("/sync")
 # def sync_time():
@@ -83,9 +91,12 @@ def status(uuid: UUID):
 def get_jobs():
     response = {}
     for uuid, job in jobs.items():
-        if(job.status == "started"):
-            calculate_values(uuid)
+        print(job.status)
+        # if(job.status == "started" or job.status == "OK"):
+        #     calculate_values(uuid)
         response[str(uuid)] = {"collected_power_samples": job.collected_power_samples, "collected_data_samples": job.collected_data_samples}
+        job.collected_data_samples = []
+        job.collected_power_samples = []
     return response
     
 def calculate_values(uuid: UUID):
