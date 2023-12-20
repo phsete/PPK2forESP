@@ -78,7 +78,7 @@ class Data:
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
-        if self.crc_equal:
+        if self.crc_equal == "1":
             crc_str = "True"
         else:
             crc_str = "False"
