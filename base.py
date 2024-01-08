@@ -9,31 +9,12 @@ import configparser
 
 import websockets.typing
 import helper
+from helper import Job
 from contextlib import contextmanager, suppress
 import requests
 import time
 from datetime import datetime
 import asyncio
-from pydantic import BaseModel
-
-class Job(BaseModel):
-    uuid: str
-    version: str
-    type: str
-    started_at: float
-    averages: Optional[List[Dict]] = []
-    data_samples: Optional[List[Dict]] = []
-
-    def add_data(self, averages: List[Dict], data_samples: List[Dict]):
-        if self.averages:
-            self.averages.extend(averages)
-        else:
-            self.averages = averages
-        
-        if self.data_samples:
-            self.data_samples.extend(data_samples)
-        else:
-            self.data_samples = data_samples
 
 class Periodic:
     def __init__(self, func, time):
@@ -206,7 +187,7 @@ class Node:
                     self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 for key, job in self.jobs.items():
-                    with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
+                    with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{run_uuid}.json", "w") as outfile:
                         outfile.write(job.model_dump_json(indent=4))
             else:
                 print_and_notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
@@ -294,6 +275,8 @@ nodes : List[Node] = []
 data_values: Dict[str, Data] = {}
 
 node_string = '''{id}["{name}\nTYPE: {isPi}\nIP: {ip}"]\n'''
+
+run_uuid = uuid4()
 
 def create_node_dialog():
     with ui.dialog() as dialog, ui.card():

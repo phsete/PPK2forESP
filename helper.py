@@ -4,9 +4,30 @@ import time
 import configparser
 import json
 import requests
+from pydantic import BaseModel
+from typing import Optional, Dict, List
 
 config = configparser.ConfigParser()
 config.read("config.toml")
+
+class Job(BaseModel):
+    uuid: str
+    version: str
+    type: str
+    started_at: float
+    averages: Optional[List[Dict]] = []
+    data_samples: Optional[List[Dict]] = []
+
+    def add_data(self, averages: List[Dict], data_samples: List[Dict]):
+        if self.averages:
+            self.averages.extend(averages)
+        else:
+            self.averages = averages
+        
+        if self.data_samples:
+            self.data_samples.extend(data_samples)
+        else:
+            self.data_samples = data_samples
 
 def get_corrected_time():
     """
