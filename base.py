@@ -81,7 +81,7 @@ class Data:
         self.timestamp_recv = timestamp
 
     def add_to_table(self, table: ui.table):
-        if self.crc_equal == "1":
+        if self.crc_equal:
             crc_str = "True"
         else:
             crc_str = "False"
@@ -462,6 +462,7 @@ async def update_data_values():
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
                         # should be receiver
                         value, uuid, created_by_mac, crc_equal = text
+                        print(crc_equal)
                         if uuid not in data_values.keys():
                             data_values[uuid] = Data()
                         data_values[uuid].parse_receiver_data(int(value), uuid, created_by_mac, bool(crc_equal), data.get("time"))
