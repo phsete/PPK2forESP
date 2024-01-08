@@ -44,6 +44,9 @@ def get_serial_device(device_signature: str):
 def get_suitable_releases_with_asset(asset_name):
     url = "https://api.github.com/repos/phsete/ESPNOWLogger/releases"
     response = requests.get(url, headers={'Authorization': 'token ' + config["general.github"]["Token"]})
+    if response.status_code == 401:
+        print("ERROR: PAT for github releases is not valid!")
+        exit(1)
     suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if asset_name in [asset["name"] for asset in release["assets"]]]
     return suitable_releases
 
