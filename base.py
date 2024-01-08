@@ -377,7 +377,10 @@ def disable(button: ui.button, status_text, container=None, remove_container_aft
         try:
             yield
         finally:
-            row.delete()
+            try:
+                row.delete()
+            except KeyError as e:
+                pass
             button.enable()
             if remove_container_afterwards:
                 if container:
