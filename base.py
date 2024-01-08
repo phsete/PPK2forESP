@@ -1,5 +1,5 @@
 from nicegui import ui
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Literal
 from uuid import UUID, uuid4
 from websockets import client
 import json
@@ -52,9 +52,10 @@ class Periodic:
         if self.is_started:
             self.is_started = False
             # Stop task and await it stopped:
-            self._task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._task
+            if self._task:
+                self._task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._task
 
     async def _run(self):
         while True:
@@ -85,7 +86,7 @@ class Data:
             crc_str = "True"
         else:
             crc_str = "False"
-        print(f"{self.uuid}: {self.timestamp_recv}, {self.timestamp_send}")
+        # print(f"{self.uuid}: {self.timestamp_recv}, {self.timestamp_send}")
         if self.timestamp_send and self.timestamp_recv:
             table.add_rows({'uuid': self.uuid, 'value': self.value, 'created_by': self.created_by_mac, 'crc_equal': crc_str, 'timestamp_send': "{:.2f} ms".format(self.timestamp_send), 'timestamp_recv': "{:.2f} ms".format(self.timestamp_recv), 'latency': "{:.2f} ms".format(self.timestamp_recv-self.timestamp_send)})
         else:
@@ -124,21 +125,21 @@ class Node:
     async def connect_to_device(self, button: ui.button):
         with disable(button, "Connect to device"):
             try:
-                ui.notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
+                print_and_notify(f"Node {self.name} trying to connect to device with ip {self.ip} ...")
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=5))
                 response = await future1
                 result = response.json()
-                print(result["status"])
+                # print(result["status"])
                 if result["status"] == "OK" or result["status"] == "stopped":
                     self.is_connected = True
                     update_diagram()
                     update_nodes()
-                    ui.notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
+                    print_and_notify(f"Node {self.name} successfully connected to device with ip {self.ip} ...", type='positive')
                 else:
-                    ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative') # throws KeyError: 60?!
+                    print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative') # throws KeyError: 60?!
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+                print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def start_test(self, button: ui.button):
         with disable(button, "Starting Test"):
             try:
@@ -150,7 +151,7 @@ class Node:
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
                     latest_job_uuid = result["uuid"]
                     self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000)
-                    ui.notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
+                    print_and_notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
                     time.sleep(3)
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
                     response2 = await future2
@@ -158,14 +159,14 @@ class Node:
                     result2 = response2.json()
                     if not(result2["status"] == "OK" or result2["status"] == "started" or result2["status"] == "created"):
                         # Error
-                        ui.notify(f"Node {self.name} could not start test with status of '{result2['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                        print_and_notify(f"Node {self.name} could not start test with status of '{result2['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
                     else:
                         self.is_running = True
                         update_nodes()
                 else:
-                    ui.notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                    print_and_notify(f"Node {self.name} could not start test with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+                print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def sync_time(self, button: ui.button):
         with disable(button, "Syncing Time"):
             try:
@@ -174,25 +175,25 @@ class Node:
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK":
-                    ui.notify(f"Node {self.name} synced time successfully with status of '{result['status']}'", type='positive')
+                    print_and_notify(f"Node {self.name} synced time successfully with status of '{result['status']}'", type='positive')
                 else:
-                    ui.notify(f"Node {self.name} could not synced time with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
+                    print_and_notify(f"Node {self.name} could not synced time with status of '{result['status']}' -> please retry", type='negative', timeout=0, close_button="Dismiss")
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+                print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def flash(self, button: ui.button):
         with disable(button, "Flashing device"):
             try:
-                ui.notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
+                print_and_notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
                 loop = asyncio.get_event_loop()
                 future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=60))
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK":
-                    ui.notify(f"Node {self.name} successfully flashed device ...", type='positive')
+                    print_and_notify(f"Node {self.name} successfully flashed device ...", type='positive')
                 else:
-                    ui.notify(f"Node {self.name} could not flash ...", type='negative')
+                    print_and_notify(f"Node {self.name} could not flash ...", type='negative')
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+                print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def get_jobs(self):
         try:
             if(self.is_connected):
@@ -201,16 +202,16 @@ class Node:
                 response = await future1
                 result = response.json()
                 for uuid in [*result]:
-                    print("Result has length: ", len(result[uuid]["collected_power_samples"]))
+                    print(f"Received Job Data from : {self.name} with length of ", len(result[uuid]["collected_power_samples"]))
                     self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 for key, job in self.jobs.items():
                     with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}.json", "w") as outfile:
                         outfile.write(job.model_dump_json(indent=4))
             else:
-                ui.notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
+                print_and_notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
         except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-            ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+            print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def stop_all(self, button: ui.button):
         with disable(button, "Stopping all jobs"):
             try:
@@ -220,7 +221,7 @@ class Node:
                     response = await future1
                     print(response)
                     result = response.json()
-                    ui.notify(f"Node {self.name} stopping all tests ...", type='positive')
+                    print_and_notify(f"Node {self.name} stopping all tests ...", type='positive')
                     time.sleep(5) # wait for possible calculation to finish
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/", timeout=3600))
                     response2 = await future2
@@ -230,13 +231,13 @@ class Node:
                         self.is_running = False
                         if poll_periodic:
                             await poll_periodic.stop()
-                        ui.notify(f"Node {self.name} stopped all tests successfully", type='positive')
+                        print_and_notify(f"Node {self.name} stopped all tests successfully", type='positive')
                     else:
-                        ui.notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
+                        print_and_notify(f"Node {self.name} could not stop all tests -> please retry", type='negative')
                 else:
-                    ui.notify(f"Node {self.name} not connected -> skipping stop for this node ...", type='info')
+                    print_and_notify(f"Node {self.name} not connected -> skipping stop for this node ...", type='info')
             except requests.exceptions.ConnectTimeout or requests.exceptions.ConnectionError:
-                ui.notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
+                print_and_notify(f"Node {self.name} could not connect to device with ip {self.ip} ...", type='negative')
     async def update_plot(self, button: ui.button):
         self.plot_dialog.clear()
         with self.plot_dialog:
@@ -283,6 +284,10 @@ async def start_poll():
     global poll_periodic
     poll_periodic = Periodic(update_table, 10)
     await poll_periodic.start()
+    
+def print_and_notify(text: str, type: Literal['positive', 'negative', 'warning', 'info', 'ongoing'] | None = "info", timeout=None, close_button : str | bool=False):
+    ui.notify(text, type=type, timeout=timeout, close_button=close_button)
+    print(f"NOTIFY: {text}")
 
 nodes : List[Node] = []
 
@@ -350,9 +355,9 @@ def remove_all_nodes():
 
 def update_node(node: Node, name: str, ip: str, isPi: bool, dialog: ui.dialog):
     if node.name != name:
-        ui.notify(f"Node {node.name} updated to {name}!")
+        print_and_notify(f"Node {node.name} updated to {name}!")
     else:
-        ui.notify(f"Node {node.name} updated!")
+        print_and_notify(f"Node {node.name} updated!")
 
     node.name = name
     node.ip = ip
@@ -421,7 +426,7 @@ def update_nodes():
         add_node_to_container(node)
 
 def remove_node(node: Node, card: ui.card, container):
-    ui.notify(f"Node {node.name} removed!")
+    print_and_notify(f"Node {node.name} removed!")
     nodes.remove(node)
     update_diagram()
     container.remove(list(container).index(card)) if list(container) else None
@@ -432,7 +437,7 @@ def add_node(node: Node, dialog: ui.dialog | None = None):
     nodes.append(node)
     update_diagram()
     add_node_to_container(node)
-    ui.notify(f"Node {node.name} added!")
+    print_and_notify(f"Node {node.name} added!")
 
 def save_to_file():
     file = open("nodes.save","w")
@@ -440,7 +445,7 @@ def save_to_file():
         print(str(node))
         file.write(str(node) + "\n")
     file.close()
-    ui.notify("Saved to File 'nodes.save'!")
+    print_and_notify("Saved to File 'nodes.save'!")
 
 def load_from_file(container):
     remove_all_nodes()
@@ -449,7 +454,7 @@ def load_from_file(container):
     for line in file:
         add_node(Node(save_string=line))
     file.close()
-    ui.notify("Loaded from File 'nodes.save'!")
+    print_and_notify("Loaded from File 'nodes.save'!")
 
 async def update_data_values():
     for node in nodes:
@@ -462,7 +467,7 @@ async def update_data_values():
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
                         # should be receiver
                         value, uuid, created_by_mac, crc_equal = text
-                        print(crc_equal)
+                        # print(crc_equal)
                         if uuid not in data_values.keys():
                             data_values[uuid] = Data()
                         data_values[uuid].parse_receiver_data(int(value), uuid, created_by_mac, bool(crc_equal), data.get("time"))
@@ -492,7 +497,7 @@ async def update_table():
                 button.props('icon=fullscreen_exit' if table.is_fullscreen else 'icon=fullscreen')
             button = ui.button('Toggle fullscreen', icon='fullscreen', on_click=toggle).props('flat')
     await update_data_values()
-    print(data_values)
+    # print(data_values)
     for uuid, data in data_values.items():
         data.add_to_table(table)
                     
