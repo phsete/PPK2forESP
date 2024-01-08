@@ -3,17 +3,12 @@ import websockets
 import json
 import log
 import helper
-import time
+import uvicorn
 
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
 from uuid import UUID, uuid4
 from fastapi import BackgroundTasks
 from typing import Dict
-from concurrent.futures.process import ProcessPoolExecutor
-from contextlib import asynccontextmanager
-from http import HTTPStatus
-import uvicorn
 
 class Job():
     def __init__(self):
@@ -24,6 +19,7 @@ class Job():
 
 app = FastAPI()
 jobs: Dict[UUID, Job] = {}
+calculating_values = False
 
 def start_task(uuid: UUID, func, *args) -> None:
     jobs[uuid].status = "started"
@@ -33,14 +29,12 @@ def start_task(uuid: UUID, func, *args) -> None:
 def hello_world():
     return {"Hello": "World", "status": log.log_status}
 
-def test_callback(uuid: UUID, log_status, background_tasks: BackgroundTasks, version: str, node_type: str):
-    # calculate_values(uuid)
+def test_callback(uuid: UUID, log_status):
     jobs[uuid].status = log_status
-    log.ppk2_device_temp.ser.close()
-    # time.sleep(3)
-    # start(background_tasks, version, node_type)
-    # log.ppk2_device_temp = log.get_PPK2()
-    # background_tasks.add_task(start_task, uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(uuid, log_status), node_type)
+    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+        log.ppk2_device_temp.ser.close()
+    else:
+        print("Error with Callback. No PPK2 device or corresponding Serial device set.")
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -49,27 +43,33 @@ def change_status(uuid: UUID, log_status):
 
 @app.post("/start/")
 def start(background_tasks: BackgroundTasks, version: str, node_type: str):
-    # print(f"Received start at NTP Time: {helper.get_ntp_time_in_ms()}")
     log.ppk2_device_temp = log.get_PPK2()
     new_job = Job()
     jobs[new_job.uuid] = new_job
-    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status, background_tasks, version, node_type), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
+    background_tasks.add_task(start_task, new_job.uuid, log.start_test, helper.config["node"]["ESP32VidPid"], log.ppk2_device_temp, version, False, lambda log_status: test_callback(new_job.uuid, log_status), lambda log_status: change_status(new_job.uuid, log_status), node_type, lambda: calculate_values(new_job.uuid))
     return {"uuid": new_job.uuid, "status": jobs[new_job.uuid].status}
 
 @app.get("/stop/")
 def stop():
     global jobs
+    print("Stopping all jobs ...")
     log.is_stopped.set()
+    while calculating_values:
+        # wait for calculation to finish (if a calculation is still running)
+        pass
     log.log_status = "stopped" # could be done better with an actual result value
+    for uuid, job in jobs.items():
+        calculate_values(uuid)
+    response = get_jobs()
     jobs = {}
-    return {"status": log.log_status}
-
-# @app.post("/sync")
-# def sync_time():
-#     old_delta = helper.ntp_delta
-#     helper.sync_ntp_corrected_time_delta()
-#     print(f"Synced time from {old_delta}s delta to {helper.ntp_delta}s delta")
-#     return {"status": "OK"}
+    while not log.is_esp32_done.is_set():
+        pass
+    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+        log.ppk2_device_temp.ser.close()
+    else:
+        print("Error while stopping jobs. No PPK2 device or corresponding Serial device set.")
+    print("All Jobs stopped.")
+    return {"status": log.log_status, **response}
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
@@ -92,52 +92,43 @@ def get_jobs():
     response = {}
     for uuid, job in jobs.items():
         print(job.status)
-        # if(job.status == "started" or job.status == "OK"):
-        #     calculate_values(uuid)
         response[str(uuid)] = {"collected_power_samples": job.collected_power_samples, "collected_data_samples": job.collected_data_samples}
         job.collected_data_samples = []
         job.collected_power_samples = []
     return response
     
 def calculate_values(uuid: UUID):
+    global calculating_values
     print("Calculating values ...")
+    calculating_values = True
 
+    # Get values from the buffer and reset the buffer directly to not loose any sampled data
     values = log.value_buffer
     log.value_buffer = []
 
-    collected_power_samples_return = []
-
-    collected_data_samples_return = log.collected_data_samples
-    print(collected_data_samples_return)
+    # extend the collected data samples and clear the logging buffer
+    jobs[uuid].collected_data_samples.extend(log.collected_data_samples)
     log.collected_data_samples = []
-    print(collected_data_samples_return)
 
+    # get the correct power readings and append them to the job
     for timestamp, value in values:
         if value != b'':
-            samples, raw_output = log.ppk2_device_temp.get_samples(value)
-            average = sum(samples)/len(samples)
-            collected_power_samples_return.append((timestamp, average))
+            if log.ppk2_device_temp:
+                samples, raw_output = log.ppk2_device_temp.get_samples(value)
+                average = sum(samples)/len(samples)
+                jobs[uuid].collected_power_samples.append((timestamp, average))
+            else:
+                print("Error while calculating values. No PPK2 device set.")
 
-    print(f"Finished calculating values -> got {len(collected_power_samples_return)} averages")
-    jobs[uuid].collected_power_samples.extend(collected_power_samples_return)
-    jobs[uuid].collected_data_samples.extend(collected_data_samples_return)
-
-
-@app.get("/values/")
-def values(uuid: UUID):
-    selected_job = jobs[uuid] if uuid in jobs else None
-    if selected_job:
-        calculate_values(uuid)
-        return 
-    else:
-        return {"error": "Job with specified UUID not found."}
+    calculating_values = False
+    print(f"Finished calculating values -> got {len(jobs[uuid].collected_power_samples)} overall averages")
 
 async def process_message(message):
     data = json.loads(message)
     print(f"received message of type {data['type']}")
     if data["type"] == "start_test":
-        (log_status, collected_power_samples, collected_data_samples) = log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
-        return json.dumps({"status": log_status, "power_samples": collected_power_samples, "data_samples": collected_data_samples})
+        log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
+        return "started"
     elif data["type"] == "flash":
         helper.download_asset_from_release("sender.bin", "firmware.bin", data["version"])
         print(f"downloaded version {data['version']}")
@@ -158,10 +149,9 @@ async def respond(websocket):
     # print(f">>> {outgoing}")
 
 async def main():
-    async with websockets.serve(respond, "0.0.0.0", helper.config["general"]["WebsocketPort"]):
+    async with websockets.serve(respond, "0.0.0.0", helper.config["general"]["WebsocketPort"]): # type: ignore
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":    
     helper.download_asset_from_release("sender.bin", "firmware.bin")
-
     uvicorn.run("node:app", host='0.0.0.0', port= 8000, loop='asyncio')

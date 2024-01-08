@@ -5,7 +5,7 @@ import esptool
 import time
 import helper
 
-ppk2_device_temp = None
+ppk2_device_temp: PPK2_API | None = None
 
 def start_sampling(ppk2_device):
     global is_sampling
@@ -68,29 +68,6 @@ def process_serial(line, node_type, version, latest_version, change_status, log_
 
     return log_status
 
-    # Wait for the ESP to be ready (when it outputs "READY" to its serial)
-    while((line := serial_device.readline())[0:5] != b'Hello'):
-        process_log_message(line)
-    
-    log_status = check_version(line, node_type, version, latest_version, change_status)
-
-    if log_status == "OK":
-        if node_type == "sender":
-            while((line := serial_device.readline()) != b'READY\r\n'):
-                process_log_message(line)
-            while((line := serial_device.readline())[0:9] != b'ADC_VALUE'):
-                pass
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-            line = serial_device.readline()   # read a '\n' terminated line => WARNING: waits for a line to be available
-            stripped_line = line.decode('utf-8').strip()
-            collected_data_samples.append((helper.get_corrected_time(), stripped_line))
-        elif node_type == "receiver":
-            while((line := serial_device.readline())[0:4] != b'RECV'):
-                print(line)
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-        else:
-            log_status = f"Unknown device type {node_type}"
-
 def check_version(line, node_type, version, latest_version, change_status, log_status):
     device_info = line.decode('utf-8').strip().split(':')
     print(f"Type: {device_info[1]}, Version: {device_info[2]}")
@@ -134,12 +111,19 @@ def log_esp32(vid_pid, ppk2_device, version, change_status, calculate_values, no
     ppk2_device.stop_measuring()
     is_esp32_done.set()
 
-def get_PPK2():
+def get_PPK2() -> PPK2_API | None:
+    """Get a connected PPK2 device.
+
+    Returns:
+        PPK2_API | None: Returns a PPK2_API object if a PPK2 device was found. Returns None if none was found.
+    """
     print("Looking for PPK2 device ...")
+    ppk2 = None
     try:
         if((ppk2_port := helper.find_serial_device("PPK2")) == None):
             log_status = "ERROR: No PPK2 device found!"
             print(log_status)
+            return
         ppk2 = PPK2_API(ppk2_port)
         ppk2.get_modifiers()
         ppk2.use_ampere_meter()
@@ -169,7 +153,7 @@ def start_test(esp32_vid_pid, ppk2_device, version, flash=True, callback=None, c
     logger.join()
     print("Finished Test")
 
-    if callback:
+    if callback and not is_stopped.is_set():
         callback(log_status)
 
 def init_values():

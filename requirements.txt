@@ -1,5 +1,5 @@
 nicegui
-ppk2-api
+./ppk2-api/
 pyserial
 websockets
 esptool

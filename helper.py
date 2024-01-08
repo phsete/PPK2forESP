@@ -4,31 +4,36 @@ import time
 import configparser
 import json
 import requests
-import ntplib
-
-# c = ntplib.NTPClient()
-
-# ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
+from pydantic import BaseModel
+from typing import Optional, Dict, List
 
 config = configparser.ConfigParser()
 config.read("config.toml")
 
-# def get_ntp_time_in_ms():
-#     """
-#     Get current time from NTP Server in ms
-#     """
-#     return c.request("europe.pool.ntp.org", version=3).tx_time * 1000
+class Job(BaseModel):
+    uuid: str
+    version: str
+    type: str
+    started_at: float
+    averages: Optional[List[Dict]] = []
+    data_samples: Optional[List[Dict]] = []
+
+    def add_data(self, averages: List[Dict], data_samples: List[Dict]):
+        if self.averages:
+            self.averages.extend(averages)
+        else:
+            self.averages = averages
+        
+        if self.data_samples:
+            self.data_samples.extend(data_samples)
+        else:
+            self.data_samples = data_samples
 
 def get_corrected_time():
     """
     Get approximated ntp time (based on NTP Delta and system time)
     """
     return get_system_time_in_ms()
-    # return (time.time() - ntp_delta) * 1000
-
-# def sync_ntp_corrected_time_delta():
-#     global ntp_delta
-#     ntp_delta = time.time()-c.request("europe.pool.ntp.org", version=3).tx_time
 
 def get_system_time_in_ms():
     """
@@ -36,13 +41,13 @@ def get_system_time_in_ms():
     """
     return time.time() * 1000
 
-def find_serial_device(device_signature: str):
+def find_serial_device(device_signature: str) -> str | None:
     candidates = list(list_ports.grep(device_signature))
     if not candidates:
         return None
     if len(candidates) > 1:
         exit(f'More than one device with signature {device_signature} found. Please remove every device that is not going to be used.')
-    return candidates[0].device
+    return candidates[0].device # type: ignore
 
 def get_serial_device(device_signature: str):
     while not (port := find_serial_device(device_signature)):
@@ -60,6 +65,9 @@ def get_serial_device(device_signature: str):
 def get_suitable_releases_with_asset(asset_name):
     url = "https://api.github.com/repos/phsete/ESPNOWLogger/releases"
     response = requests.get(url, headers={'Authorization': 'token ' + config["general.github"]["Token"]})
+    if response.status_code == 401:
+        print("ERROR: PAT for github releases is not valid!")
+        exit(1)
     suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if asset_name in [asset["name"] for asset in release["assets"]]]
     return suitable_releases
 
