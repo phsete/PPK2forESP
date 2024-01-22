@@ -4,6 +4,7 @@ from ctypes import c_char_p
 import esptool
 import time
 import helper
+import os
 
 ppk2_device_temp: PPK2_API | None = None
 
@@ -34,7 +35,7 @@ def flash_esp32(vid_pid, ppk2_device=None):
         ppk2_device.toggle_DUT_power("ON")
     serial_device = helper.get_serial_device(vid_pid)
     
-    command = ["-p", serial_device.port, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", "firmware.bin"]
+    command = ["-p", serial_device.port, "-b", "460800", "--before", "default_reset", "--after", "hard_reset", "--chip", "esp32c6", "write_flash", "--flash_mode", "dio", "--flash_size", "2MB", "--flash_freq", "80m", "0x10000", os.path.join(helper.BASE_DIR, "firmware.bin")]
     print('Using command %s' % ' '.join(command))
     try:
         esptool.main(command)
