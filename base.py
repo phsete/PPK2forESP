@@ -6,10 +6,11 @@ import json
 import plotly.graph_objects as go
 import plotly.colors as plotly_colors
 import configparser
+import os
 
 import websockets.typing
 import helper
-from helper import Job
+from helper import Job, BASE_DIR
 from contextlib import contextmanager, suppress
 import requests
 import time
@@ -187,7 +188,7 @@ class Node:
                     self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
                 # print(f"Job UUID's: {[*result]}") # get the first key of the json response
                 for key, job in self.jobs.items():
-                    with open(f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{run_uuid}.json", "w") as outfile:
+                    with open(os.path.join(BASE_DIR, f"result-{datetime.fromtimestamp(job.started_at / 1000).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{run_uuid}.json"), "w") as outfile:
                         outfile.write(job.model_dump_json(indent=4))
             else:
                 print_and_notify(f"Node {self.name} not connected -> skipping plot update for this node ...", type='info')
@@ -423,7 +424,7 @@ def add_node(node: Node, dialog: ui.dialog | None = None):
     print_and_notify(f"Node {node.name} added!")
 
 def save_to_file():
-    file = open("nodes.save","w")
+    file = open(os.path.join(BASE_DIR, "nodes.save"),"w")
     for node in nodes:
         print(str(node))
         file.write(str(node) + "\n")
@@ -433,7 +434,7 @@ def save_to_file():
 def load_from_file(container):
     remove_all_nodes()
     container.clear()
-    file = open("nodes.save", "r")
+    file = open(os.path.join(BASE_DIR, "nodes.save"), "r")
     for line in file:
         add_node(Node(save_string=line))
     file.close()
@@ -503,7 +504,7 @@ async def send_json_data(uri, data) -> websockets.typing.Data:
         return "ERR"
 
 config = configparser.ConfigParser()
-config.read("config.toml")
+config.read(os.path.join(BASE_DIR, "config.toml"))
 
 available_logger_versions = ["latest"] + [version["name"] for version in helper.get_suitable_releases_with_asset("sender.bin")]
 

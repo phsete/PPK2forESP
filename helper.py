@@ -6,9 +6,12 @@ import json
 import requests
 from pydantic import BaseModel
 from typing import Optional, Dict, List
+import os
+
+BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
 config = configparser.ConfigParser()
-config.read("config.toml")
+config.read(os.path.join(BASE_DIR, "config.toml"))
 
 class Job(BaseModel):
     uuid: str

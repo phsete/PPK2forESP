@@ -4,6 +4,7 @@ import json
 import log
 import helper
 import uvicorn
+import os
 
 from fastapi import FastAPI
 from uuid import UUID, uuid4
@@ -73,7 +74,7 @@ def stop():
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
-    helper.download_asset_from_release(f"{node_type}.bin", "firmware.bin", version)
+    helper.download_asset_from_release(f"{node_type}.bin", os.path.join(helper.BASE_DIR, "firmware.bin"), version)
     print(f"downloaded version {version}")
     log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
     return {"status": "OK"}
@@ -130,7 +131,7 @@ async def process_message(message):
         log.start_test(esp32_vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), version=data["version"], flash=False)
         return "started"
     elif data["type"] == "flash":
-        helper.download_asset_from_release("sender.bin", "firmware.bin", data["version"])
+        helper.download_asset_from_release("sender.bin", os.path.join(helper.BASE_DIR, "firmware.bin"), data["version"])
         print(f"downloaded version {data['version']}")
         log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
         return "OK" # Temporary return value -> not representing actual result of flash
@@ -153,5 +154,5 @@ async def main():
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":    
-    helper.download_asset_from_release("sender.bin", "firmware.bin")
+    helper.download_asset_from_release("sender.bin", os.path.join(helper.BASE_DIR, "firmware.bin"))
     uvicorn.run("node:app", host='0.0.0.0', port= 8000, loop='asyncio')
