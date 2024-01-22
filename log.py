@@ -29,7 +29,7 @@ def start_sampling(ppk2_device):
         print(log_status)
     is_sampling = False
 
-def flash_esp32(vid_pid, ppk2_device=None):
+def flash_esp32(vid_pid, ppk2_device=None, callback=None):
     print("Flashing ESP32 ...")
     if ppk2_device:
         ppk2_device.toggle_DUT_power("ON")
@@ -46,6 +46,9 @@ def flash_esp32(vid_pid, ppk2_device=None):
     serial_device.close()
     if ppk2_device:
         ppk2_device.toggle_DUT_power("OFF")
+    
+    if callback:
+        callback()
 
 def process_log_message(line):
     global collected_data_samples

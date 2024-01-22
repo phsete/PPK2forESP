@@ -36,6 +36,12 @@ def test_callback(uuid: UUID, log_status):
         log.ppk2_device_temp.ser.close()
     else:
         print("Error with Callback. No PPK2 device or corresponding Serial device set.")
+        
+def flash_callback():
+    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+        log.ppk2_device_temp.ser.close()
+    else:
+        print("Error with Callback. No PPK2 device or corresponding Serial device set.")
 
 def change_status(uuid: UUID, log_status):
     print(f"change: {log_status}")
@@ -76,7 +82,7 @@ def stop():
 def flash(version: str, node_type: str):
     helper.download_asset_from_release(f"{node_type}.bin", os.path.join(helper.BASE_DIR, "firmware.bin"), version)
     print(f"downloaded version {version}")
-    log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2())
+    log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.get_PPK2(), callback=flash_callback)
     return {"status": "OK"}
 
 @app.get("/status/")
