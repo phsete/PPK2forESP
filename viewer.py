@@ -27,16 +27,14 @@ def safe_cast(val, to_type, default=None):
         return default
 
 result_files = glob.glob("result-*.json")
-results = [Result(date=datetime.strptime(result_file[7:7+12], '%y%m%d%H%M%S'), node_uuid=result_file[25:25+36], job_uuid=result_file[66:66+36], run_uuid=result_file[107:107+36], job=get_job(result_file)) for result_file in result_files if len(result_file) == 148]
+results = [Result(date=datetime.strptime(result_file[7:7+12], '%y%m%d%H%M%S'), node_uuid=result_file[25:25+36], job_uuid=result_file[66:66+36], run_uuid=result_file[107:107+36], job=get_job(result_file)) for result_file in result_files if len(result_file) >= 100]
 result_groups: List[List[Result]] = []
 for result in results:
     result_group = [result]
-    results.remove(result)
-    for result_2 in results:
+    for result_2 in [res for res in results if res != result and result.run_uuid not in [res_g[0].run_uuid for res_g in result_groups]]:
         if result.run_uuid == result_2.run_uuid:
             result_group.append(result_2)
-            results.remove(result_2)
-    result_groups.append(result_group)
+            result_groups.append(result_group)
 
 i = 0
 for result_group in result_groups:
