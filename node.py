@@ -80,6 +80,7 @@ def stop():
 
 @app.post("/flash/")
 def flash(version: str, node_type: str):
+    log.ppk2_device_temp = log.get_PPK2()
     helper.download_asset_from_release(f"{node_type}.bin", os.path.join(helper.BASE_DIR, "firmware.bin"), version)
     print(f"downloaded version {version}")
     log.flash_esp32(vid_pid=helper.config["node"]["ESP32VidPid"], ppk2_device=log.ppk2_device_temp, callback=flash_callback)
