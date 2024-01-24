@@ -447,7 +447,7 @@ async def update_data_values():
             for data in job.data_samples:
                 raw_value = str(data.get("value"))
                 text = raw_value.split(';')
-                if len(text) > 1 :
+                if len(text) > 2 :
                     if len(text) > 3: # not a good way to filter this -> crc_equal could be set as None
                         # should be receiver
                         value, uuid, created_by_mac, crc_equal = text
