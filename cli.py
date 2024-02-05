@@ -47,6 +47,9 @@ parser.add_argument('--list_versions',
 parser.add_argument('--list_options',
                     help="Lists all available Options for sepcific Logger Version",
                     dest="logger_version_option")
+parser.add_argument('-r', '--reset',
+                    help="Reset all devices specified in given config file",
+                    dest="reset_config_file")
 
 args = parser.parse_args()
 
@@ -62,8 +65,25 @@ def main():
         if not version_found:
             parser_run.exit(message=f"\n\033[1;31mSpecified Version not found!\033[0m")
             
+    if args.reset_config_file:
+        if not os.path.isfile(args.reset_config_file):
+            parser_run.exit(message=f"\n\033[1;31mConfig File not found!\033[0m")
+        run_uuid = uuid4()
+        file = open(args.reset_config_file, "r")
+        # ---- PARSE CONFIG FILE ----
+        for line in file:
+            try:
+                nodes.append(SimpleNode(line, run_uuid))
+            except IndexError:
+                file.close()
+                parser_run.exit(message=f"\n\033[1;31mConfig File is malformed!\033[0m")
+        file.close()
+        
+        for node in nodes:
+            node.stop_test(collect_data=False)
+            
     # ---- PROCESSING ---- RUN ----
-    if args.config_file:
+    if hasattr(args, "config_file"):
         if not os.path.isfile(args.config_file):
             parser_run.exit(message=f"\n\033[1;31mConfig File not found!\033[0m")
         run_uuid = uuid4()
