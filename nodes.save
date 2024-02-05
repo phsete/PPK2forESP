@@ -1,2 +1,2 @@
-(b27e357c-dbe4-458c-8942-195c8bd0f2c5,Base,raspberrypi1,True,v0.2.3-ds10-7b9f5da,sender)
-(d46c204b-b90a-4ef8-9b28-5a8f67021fef,Sensor,raspberrypi2,True,v0.2.3-ds10-7b9f5da,receiver)
+(b27e357c-dbe4-458c-8942-195c8bd0f2c5,Base,raspberrypi1,True,v0.2.5-98db69f,sender,DEEP_SLEEP,EXAMPLE_POWER_SAVE_NONE)
+(d46c204b-b90a-4ef8-9b28-5a8f67021fef,Sensor,raspberrypi2,True,v0.2.5-98db69f,receiver,DEEP_SLEEP,EXAMPLE_POWER_SAVE_NONE)

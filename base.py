@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import plotly.colors as plotly_colors
 import configparser
 import os
+import re
 
 import websockets.typing
 import helper
@@ -87,6 +88,10 @@ class Node:
             self.logger_type = logger_type
             self.jobs = {}
             self.rendered_plot_once = False
+            self.available_sleep_modes = []
+            self.available_power_save_modes = []
+            self.sleep_mode = None
+            self.power_save_mode = None
         else:
             strings = save_string[1:-2].split(",")
             self.uuid = UUID(strings[0])
@@ -99,9 +104,14 @@ class Node:
             self.logger_type = strings[5]
             self.jobs = {} # could be saved and reloaded here
             self.rendered_plot_once = False
+            self.available_sleep_modes = []
+            self.available_power_save_modes = []
+            self.sleep_mode = strings[6]
+            self.power_save_mode = strings[7]
         self.plot_dialog = create_plot_dialog()
+        version_select(self, self.logger_version_to_flash)
     def __str__(self) -> str:
-        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type})"
+        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type},{self.sleep_mode},{self.power_save_mode})"
     def __repr__(self):
         return str(self)
     async def connect_to_device(self, button: ui.button):
@@ -127,12 +137,12 @@ class Node:
             try:
                 loop = asyncio.get_event_loop()
                 # print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": f"{self.logger_version_to_flash}-{self.sleep_mode}-{self.power_save_mode}", "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
                     latest_job_uuid = result["uuid"]
-                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000)
+                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000, sleep_mode=self.sleep_mode or "NO_SLEEP", power_save_mode=self.power_save_mode or "EXAMPLE_POWER_SAVE_NONE")
                     print_and_notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
                     time.sleep(3)
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
@@ -165,9 +175,9 @@ class Node:
     async def flash(self, button: ui.button):
         with disable(button, "Flashing device"):
             try:
-                print_and_notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} ...")
+                print_and_notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} and option {self.logger_type}-{self.sleep_mode}-{self.power_save_mode} ...")
                 loop = asyncio.get_event_loop()
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": self.logger_type}, timeout=60))
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": f"{self.logger_type}-{self.sleep_mode}-{self.power_save_mode}"}, timeout=60))
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK":
@@ -353,7 +363,16 @@ def update_node(node: Node, name: str, ip: str, isPi: bool, dialog: ui.dialog):
 
 def version_select(node: Node, version_name):
     node.logger_version_to_flash = version_name
+    assets_with_options = get_available_options(version_name)
+    node.available_sleep_modes = list(dict.fromkeys([asset_with_options["options"][0] for asset_with_options in assets_with_options]))
+    node.available_power_save_modes = list(dict.fromkeys([asset_with_options["options"][1] for asset_with_options in assets_with_options]))
     return version_name
+
+def option_select(node: Node, sleep_mode = None, power_save_mode = None):
+    if sleep_mode:
+        node.sleep_mode = sleep_mode
+    if power_save_mode:
+        node.power_save_mode = power_save_mode
 
 @contextmanager
 def disable(button: ui.button, status_text, container=None, remove_container_afterwards=False) -> Generator[Any, Any, Any]:
@@ -385,8 +404,10 @@ def add_node_to_container(node: Node):
                 ui.label("Sender")
                 ui.switch("Receiver", value=node.logger_type == "receiver",on_change=lambda e: node.change_type(e.sender))
             with ui.row():
-                ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-36')
-                with ui.button(icon='play_arrow', on_click=lambda e: node.flash(e.sender)).classes('w-12'):
+                ui.select(available_logger_versions, value=(node.logger_version_to_flash if node.logger_version_to_flash in available_logger_versions else version_select(node, available_logger_versions[0])), label="Flash Logger Version", on_change=lambda e: version_select(node, e.value)).classes('w-48')
+                ui.select(node.available_sleep_modes, value=(node.sleep_mode if node.sleep_mode in node.available_sleep_modes else option_select(node, sleep_mode=node.available_sleep_modes[0])), label="Sleep Mode", on_change=lambda e: option_select(node, sleep_mode=e.value)).classes('w-48')
+                ui.select(node.available_power_save_modes, value=(node.power_save_mode if node.power_save_mode in node.available_power_save_modes else option_select(node, power_save_mode=node.available_power_save_modes[0])), label="Power Save Mode", on_change=lambda e: option_select(node, power_save_mode=e.value)).classes('w-48')
+                with ui.button(icon='play_arrow', on_click=lambda e: node.flash(e.sender)).classes('w-48'):
                     ui.tooltip("Start flashing logger version onto connected ESP32")
             with ui.row():
                 with ui.button(icon='delete', on_click=lambda: remove_node(node, tempCard, container)):
@@ -502,11 +523,21 @@ async def send_json_data(uri, data) -> websockets.typing.Data:
     except Exception as error:
         print(error)
         return "ERR"
+    
+def get_available_options(logger_version):
+    assets_with_options = []
+    for asset in [version["assets"] for version in available_releases if version["name"] == logger_version][0]:
+        if not asset["name"][0:16] == "sender-sdkconfig" and not asset["name"][0:18] == "receiver-sdkconfig":
+            options = re.sub("^sender-|^receiver-", "", asset["name"]).split("-")
+            options[len(options)-1] = options[len(options)-1][:-4] # remove .bin
+            assets_with_options.append({"asset": asset, "options": options})
+    return assets_with_options
 
 config = configparser.ConfigParser()
 config.read(os.path.join(BASE_DIR, "config.toml"))
 
-available_logger_versions = ["latest"] + [version["name"] for version in helper.get_suitable_releases_with_asset("sender.bin")]
+available_releases = helper.get_suitable_releases_with_asset_regex("sender-.*\.bin")
+available_logger_versions = [version["name"] for version in available_releases]
 
 add_dialog = create_node_dialog()
 

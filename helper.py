@@ -7,6 +7,7 @@ import requests
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import os
+import re
 
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -17,6 +18,8 @@ class Job(BaseModel):
     uuid: str
     version: str
     type: str
+    sleep_mode: str
+    power_save_mode: str
     started_at: float
     averages: Optional[List[Dict]] = []
     data_samples: Optional[List[Dict]] = []
@@ -72,6 +75,15 @@ def get_suitable_releases_with_asset(asset_name):
         print("ERROR: PAT for github releases is not valid!")
         exit(1)
     suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if asset_name in [asset["name"] for asset in release["assets"]]]
+    return suitable_releases
+
+def get_suitable_releases_with_asset_regex(asset_name_regex):
+    url = "https://api.github.com/repos/phsete/ESPNOWLogger/releases"
+    response = requests.get(url, headers={'Authorization': 'token ' + config["general.github"]["Token"]})
+    if response.status_code == 401:
+        print("ERROR: PAT for github releases is not valid!")
+        exit(1)
+    suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if len(["MATCHED" for asset in release["assets"] if re.search(asset_name_regex, asset["name"]) != None]) > 0]
     return suitable_releases
 
 def download_asset_from_release(asset_name, path, version="latest"):
