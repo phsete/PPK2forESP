@@ -11,7 +11,7 @@ import re
 
 import websockets.typing
 import helper
-from helper import Job, BASE_DIR
+from helper import Job, BASE_DIR, get_available_options
 from contextlib import contextmanager, suppress
 import requests
 import time
@@ -363,7 +363,7 @@ def update_node(node: Node, name: str, ip: str, isPi: bool, dialog: ui.dialog):
 
 def version_select(node: Node, version_name):
     node.logger_version_to_flash = version_name
-    assets_with_options = get_available_options(version_name)
+    assets_with_options = get_available_options(version_name, available_releases)
     node.available_sleep_modes = list(dict.fromkeys([asset_with_options["options"][0] for asset_with_options in assets_with_options]))
     node.available_power_save_modes = list(dict.fromkeys([asset_with_options["options"][1] for asset_with_options in assets_with_options]))
     return version_name
@@ -523,15 +523,6 @@ async def send_json_data(uri, data) -> websockets.typing.Data:
     except Exception as error:
         print(error)
         return "ERR"
-    
-def get_available_options(logger_version):
-    assets_with_options = []
-    for asset in [version["assets"] for version in available_releases if version["name"] == logger_version][0]:
-        if not asset["name"][0:16] == "sender-sdkconfig" and not asset["name"][0:18] == "receiver-sdkconfig":
-            options = re.sub("^sender-|^receiver-", "", asset["name"]).split("-")
-            options[len(options)-1] = options[len(options)-1][:-4] # remove .bin
-            assets_with_options.append({"asset": asset, "options": options})
-    return assets_with_options
 
 config = configparser.ConfigParser()
 config.read(os.path.join(BASE_DIR, "config.toml"))

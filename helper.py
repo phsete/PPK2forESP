@@ -1,3 +1,5 @@
+from argparse import ArgumentParser
+from enum import Enum
 import serial
 from serial.tools import list_ports
 import time
@@ -8,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, List
 import os
 import re
+from uuid import UUID
 
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -86,6 +89,42 @@ def get_suitable_releases_with_asset_regex(asset_name_regex):
     suitable_releases = [{"name": release["name"], "assets": [{"name": asset["name"], "url": asset["url"]} for asset in release["assets"]]} for release in json.loads(response.content) if len(["MATCHED" for asset in release["assets"] if re.search(asset_name_regex, asset["name"]) != None]) > 0]
     return suitable_releases
 
+def get_available_options(logger_version, available_releases):
+    assets_with_options = []
+    for asset in [version["assets"] for version in available_releases if version["name"] == logger_version][0]:
+        if not asset["name"][0:16] == "sender-sdkconfig" and not asset["name"][0:18] == "receiver-sdkconfig":
+            options = re.sub("^sender-|^receiver-", "", asset["name"]).split("-")
+            options[len(options)-1] = options[len(options)-1][:-4] # remove .bin
+            assets_with_options.append({"asset": asset, "options": options})
+    return assets_with_options
+
+def print_available_versions():
+    available_releases = get_suitable_releases_with_asset_regex("sender-.*\.bin")
+    available_logger_versions = [version["name"] for version in available_releases]
+    print("Available Versions:")
+    for version in available_logger_versions:
+        print(version)
+        
+def print_available_options(logger_version):
+    available_releases = get_suitable_releases_with_asset_regex("sender-.*\.bin")
+    available_logger_versions = [version["name"] for version in available_releases]
+    if logger_version in available_logger_versions:
+        available_options = get_available_options(logger_version, available_releases)
+        print("Available Options:")
+        sleep_modes = []
+        power_save_modes = []
+        for option_combination in available_options:
+            sleep_modes.append(option_combination["options"][0])
+            power_save_modes.append(option_combination["options"][1])
+        sleep_modes = list(dict.fromkeys(sleep_modes))
+        power_save_modes = list(dict.fromkeys(power_save_modes))
+        print(f"Sleep Modes: {sleep_modes}")
+        print(f"Power Save Modes: {power_save_modes}")
+        return True
+    else:
+        print_available_versions()
+        return False
+
 def download_asset_from_release(asset_name, path, version="latest"):
     suitable_releases = get_suitable_releases_with_asset(asset_name)
     if(version == "latest"):
@@ -103,3 +142,23 @@ def download_asset_from_release(asset_name, path, version="latest"):
             file.write(response.content)
     else:
         exit("Download failed!")
+        
+exit_parser: ArgumentParser
+
+class Color(Enum):
+    RED = 31
+    GREEN = 32
+    YELLOW = 33
+    
+def set_exit_parser(parser: ArgumentParser):
+    exit_parser = parser
+    
+def exit_error(message):
+    if exit_parser != None:
+        exit_parser.exit(message=f"\n\033[1;{Color.RED.value}m{message}\033[0m")
+    else:
+        print_colored(f"\n{message}", Color.RED)
+        exit(0)
+        
+def print_colored(message, color: Color):
+    print(f"\033[1;{color.value}m{message}\033[0m")
