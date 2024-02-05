@@ -18,6 +18,10 @@ def get_job(filename):
     with open(filename, "r") as result_file:
         job_dict = json.loads(result_file.read())
         job = Job(**job_dict)
+        if job.averages:
+            job.averages = sorted(job.averages, key=lambda val:val["time"])
+        if job.data_samples:
+            job.data_samples = sorted(job.data_samples, key=lambda val:val["time"])
     return job
 
 def safe_cast(val, to_type, default=None):
@@ -38,7 +42,7 @@ for result in results:
 
 i = 0
 for result_group in result_groups:
-    print(f"{i}: result group with run uuid {result_group[0].run_uuid} from {result_group[0].date.strftime('%y-%m-%d')}")
+    print(f"{i}: result group with run uuid {result_group[0].run_uuid} from {result_group[0].date.strftime('%y-%m-%d %H:%M:%S')}")
     i = i + 1
     
 selected_result_group: List[Result] = []
