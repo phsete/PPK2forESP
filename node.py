@@ -32,10 +32,10 @@ def hello_world():
 
 def test_callback(uuid: UUID, log_status):
     jobs[uuid].status = log_status
-    if log.ppk2_device_temp and log.ppk2_device_temp.ser:
-        log.ppk2_device_temp.ser.close()
-    else:
-        print("Error with Callback. No PPK2 device or corresponding Serial device set.")
+    # if log.ppk2_device_temp and log.ppk2_device_temp.ser:
+    #     log.ppk2_device_temp.ser.close()
+    # else:
+    #     print("Error with Callback. No PPK2 device or corresponding Serial device set.")
         
 def flash_callback():
     if log.ppk2_device_temp and log.ppk2_device_temp.ser:
