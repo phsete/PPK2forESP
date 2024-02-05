@@ -61,10 +61,14 @@ class SimpleNode:
         except requests.exceptions.ConnectionError:
             exit_error(f"Node {self.name} could not connect to device with ip {self.ip} ...\nConnectionError")
             
-    def stop_test(self):
+    def stop_test(self, collect_data = True):
         try:
             print_colored(f"Node {self.name} stopping all tests ...", Color.YELLOW)
-            session.get(f"http://{self.ip}:{helper.config['general']['APIPort']}/stop/", timeout=60)
+            response = session.get(f"http://{self.ip}:{helper.config['general']['APIPort']}/stop/", timeout=60)
+            if collect_data:
+                result = response.json()
+                result.pop("status")
+                self.process_data(result)
             print_colored(f"Node {self.name} successfully stopped all tests!", Color.GREEN)
         except requests.exceptions.ConnectTimeout:
             exit_error(f"Node {self.name} could not stop tests ...\nConnectTimeout")
@@ -75,15 +79,18 @@ class SimpleNode:
         try:
             response = session.get(f"http://{self.ip}:{helper.config['general']['APIPort']}/jobs", timeout=60)
             result = response.json()
-            for uuid in [*result]:
-                print(f"Received Job Data from {self.name} with length of ", len(result[uuid]["collected_power_samples"]))
-                if not uuid in self.jobs:
-                    self.jobs[uuid] = helper.Job(uuid=uuid, version=self.version, type=self.type, sleep_mode=self.sleep_mode, power_save_mode=self.power_save_mode, started_at=self.started_at)
-                self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in result[uuid]["collected_data_samples"]])
-            for key, job in self.jobs.items():
-                with open(os.path.join(helper.BASE_DIR, f"result-{datetime.fromtimestamp(job.started_at).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{self.run_uuid}.json"), "w") as outfile:
-                    outfile.write(job.model_dump_json(indent=4))
+            self.process_data(result)
         except requests.exceptions.ConnectTimeout:
             exit_error(f"Node {self.name} could not connect to device with ip {self.ip} ...\nConnectTimeout")
         except requests.exceptions.ConnectionError:
             exit_error(f"Node {self.name} could not connect to device with ip {self.ip} ...\nConnectionError")
+            
+    def process_data(self, data):
+        for uuid in [*data]:
+            print(f"Received Job Data from {self.name} with length of ", len(data[uuid]["collected_power_samples"]))
+            if not uuid in self.jobs:
+                self.jobs[uuid] = helper.Job(uuid=uuid, version=self.version, type=self.type, sleep_mode=self.sleep_mode, power_save_mode=self.power_save_mode, started_at=self.started_at)
+            self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in data[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in data[uuid]["collected_data_samples"]])
+        for key, job in self.jobs.items():
+            with open(os.path.join(helper.BASE_DIR, f"result-{datetime.fromtimestamp(job.started_at).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{self.run_uuid}.json"), "w") as outfile:
+                outfile.write(job.model_dump_json(indent=4))
