@@ -1,5 +1,5 @@
 import time
-from uuid import UUID
+from uuid import UUID, uuid4
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -70,6 +70,7 @@ class SimpleNode:
                 result.pop("status")
                 self.process_data(result)
             print_colored(f"Node {self.name} successfully stopped all tests!", Color.GREEN)
+            time.sleep(1) # wait a bit for ppk2 to reset
         except requests.exceptions.ConnectTimeout:
             exit_error(f"Node {self.name} could not stop tests ...\nConnectTimeout")
         except requests.exceptions.ConnectionError:
@@ -94,3 +95,18 @@ class SimpleNode:
         for key, job in self.jobs.items():
             with open(os.path.join(helper.BASE_DIR, f"result-{datetime.fromtimestamp(job.started_at).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{self.run_uuid}.json"), "w") as outfile:
                 outfile.write(job.model_dump_json(indent=4))
+                
+    def flash(self):
+        try:
+            print_colored(f"Node {self.name} trying to flash device with logger version {self.version} and option {self.type}-{self.sleep_mode}-{self.power_save_mode} ...", Color.YELLOW)
+            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/flash/", params={"version": self.version, "node_type": f"{self.type}-{self.sleep_mode}-{self.power_save_mode}"}, timeout=60)
+            result = response.json()
+            if result["status"] == "OK":
+                print_colored(f"Node {self.name} successfully flashed device ...", Color.GREEN)
+                time.sleep(1) # wait a bit for ppk2 to reset
+            else:
+                exit_error(f"Node {self.name} could not flash ...")
+        except requests.exceptions.ConnectTimeout:
+            exit_error(f"Node {self.name} could not connect to device with ip {self.ip} ...\nConnectTimeout")
+        except requests.exceptions.ConnectionError:
+            exit_error(f"Node {self.name} could not connect to device with ip {self.ip} ...\nConnectionError")

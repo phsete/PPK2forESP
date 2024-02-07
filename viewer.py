@@ -42,7 +42,7 @@ for result in results:
 
 i = 0
 for result_group in result_groups:
-    print(f"{i}: result group with run uuid {result_group[0].run_uuid} from {result_group[0].date.strftime('%y-%m-%d %H:%M:%S')}")
+    print(f"{i}: result group with run uuid {result_group[0].run_uuid} from {datetime.utcfromtimestamp(result_group[0].job.started_at).strftime('%y-%m-%d %H:%M:%S')}")
     i = i + 1
     
 selected_result_group: List[Result] = []
@@ -157,6 +157,8 @@ def show_plot(power: List[tuple[float, float, float]] | None = None):
                                 text=f"<b>Cycle {power_index + 1}</b><br>{mWh} mWh<br>in {time} seconds")
                             power_index = power_index + 1
             i += 1
+            if i > 9:
+                i = 0
     fig.show()
     
 show_plot(get_total_power_cycle(get_sender_index(selected_result_group)))

@@ -123,6 +123,7 @@ def get_PPK2() -> PPK2_API | None:
     """
     print("Looking for PPK2 device ...")
     ppk2 = None
+    i = 0
     try:
         if((ppk2_port := helper.find_serial_device("PPK2")) == None):
             log_status = "ERROR: No PPK2 device found!"
@@ -134,8 +135,11 @@ def get_PPK2() -> PPK2_API | None:
         ppk2.set_source_voltage(3300)  # set source voltage in mV
         print("Found and configured PPK2 device")
     except:
-        log_status = "Unknown Error while looking for PPK2 device!"
+        log_status = f"Unknown Error while looking for PPK2 device! retrying {i}/10..."
         print(log_status)
+        i = i + 1
+        if i < 10:
+            return get_PPK2()
     
     return ppk2
 
