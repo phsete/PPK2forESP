@@ -23,8 +23,9 @@ class SimpleNode:
             self.isPi = strings[3] == "True"
             self.version = strings[4]
             self.type = strings[5]
-            self.sleep_mode = strings[6]
-            self.power_save_mode = strings[7]
+            if self.type != "receiver":
+                self.sleep_mode = strings[6]
+                self.power_save_mode = strings[7]
             self.jobs = {}
             self.run_uuid = run_uuid
             self.started_at = 0
@@ -42,7 +43,8 @@ class SimpleNode:
             
     def start_test(self):
         try:
-            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/start/", params={"version": f"{self.version}-{self.sleep_mode}-{self.power_save_mode}", "node_type": self.type}, timeout=5)
+            version_param =  f"{self.version}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.version}"
+            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/start/", params={"version": version_param, "node_type": self.type}, timeout=5)
             result = response.json()
             self.started_at = time.time()
             if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
@@ -90,7 +92,7 @@ class SimpleNode:
         for uuid in [*data]:
             print(f"Received Job Data from {self.name} with length of ", len(data[uuid]["collected_power_samples"]))
             if not uuid in self.jobs:
-                self.jobs[uuid] = helper.Job(uuid=uuid, version=self.version, type=self.type, sleep_mode=self.sleep_mode, power_save_mode=self.power_save_mode, started_at=self.started_at)
+                self.jobs[uuid] = helper.Job(uuid=uuid, version=self.version, type=self.type, sleep_mode=self.sleep_mode if self.type != "receiver" else "NA", power_save_mode=self.power_save_mode if self.type != "receiver" else "NA", started_at=self.started_at)
             self.jobs[uuid].add_data(averages=[{"time": value[0], "value": value[1]} for value in data[uuid]["collected_power_samples"]], data_samples=[{"time": value[0], "value": value[1]} for value in data[uuid]["collected_data_samples"]])
         for key, job in self.jobs.items():
             with open(os.path.join(helper.BASE_DIR, f"result-{datetime.fromtimestamp(job.started_at).strftime('%y%m%d%H%M%S')}-node-{self.uuid}-job-{job.uuid}-run-{self.run_uuid}.json"), "w") as outfile:
@@ -98,8 +100,10 @@ class SimpleNode:
                 
     def flash(self):
         try:
-            print_colored(f"Node {self.name} trying to flash device with logger version {self.version} and option {self.type}-{self.sleep_mode}-{self.power_save_mode} ...", Color.YELLOW)
-            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/flash/", params={"version": self.version, "node_type": f"{self.type}-{self.sleep_mode}-{self.power_save_mode}"}, timeout=60)
+            version_param =  f"{self.version}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.version}"
+            type_param =  f"{self.type}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.type}"
+            print_colored(f"Node {self.name} trying to flash device with logger version {self.version} and option {version_param} ...", Color.YELLOW)
+            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/flash/", params={"version": self.version, "node_type": type_param}, timeout=60)
             result = response.json()
             if result["status"] == "OK":
                 print_colored(f"Node {self.name} successfully flashed device ...", Color.GREEN)

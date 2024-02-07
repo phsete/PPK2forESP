@@ -9,7 +9,9 @@ import plotly.colors as plotly_colors
 
 SHOW_EVENTS_IN_PLOT = False
 SHOW_POWER_IN_PLOT = True
-SHOW_RECEIVER_IN_PLOT = False
+SHOW_RECEIVER_IN_PLOT = True
+
+SHIFT_SENDER_TIME_TO_FIRST_ADC = False
 
 class Result(BaseModel):
     date: datetime
@@ -29,7 +31,7 @@ def get_job(filename):
             job.averages = sorted(job.averages, key=lambda val:val["time"])
         if job.data_samples:
             job.data_samples = sorted(job.data_samples, key=lambda val:val["time"])
-        if job.type == "sender":
+        if SHIFT_SENDER_TIME_TO_FIRST_ADC and job.type == "sender":
             first_adc_time = get_first_adc_time(job.data_samples)
             if job.averages:
                 for average in job.averages:
