@@ -63,9 +63,16 @@ def get_serial_device(device_signature: str):
         time.sleep(0.1)
         print("waiting for serial port to be available ...")
 
-    serial_port = serial.Serial(port, baudrate=115200)
+    serial_port = serial.Serial(port,
+                                baudrate=115200,
+                                timeout=1,
+                                write_timeout=2)
 
     while(not serial_port.is_open):
+        try:
+            serial_port.open()
+        except serial.SerialException as e:
+            print("error opening serial device: " + str(e))
         time.sleep(0.1)
         print("waiting for serial port to be open ...")
 
