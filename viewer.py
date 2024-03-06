@@ -2,10 +2,12 @@ import glob
 from datetime import datetime
 from pydantic import BaseModel
 from helper import Job
+import helper
 import json
 from typing import List, Dict
 import plotly.graph_objects as go
 import plotly.colors as plotly_colors
+import os
 
 SHOW_EVENTS_IN_PLOT = False
 SHOW_POWER_IN_PLOT = True
@@ -23,24 +25,35 @@ class Result(BaseModel):
 def get_first_adc_time(data_samples):
     return [data_sample for data_sample in data_samples if data_sample.get("value") == "ADC_READ"][0]["time"]
     
-def get_job(filename):
-    with open(filename, "r") as result_file:
-        job_dict = json.loads(result_file.read())
-        job = Job(**job_dict)
-        if job.averages:
-            job.averages = sorted(job.averages, key=lambda val:val["time"])
-        if job.data_samples:
-            job.data_samples = sorted(job.data_samples, key=lambda val:val["time"])
-        if SHIFT_SENDER_TIME_TO_FIRST_ADC and job.type == "sender":
-            first_adc_time = get_first_adc_time(job.data_samples)
-            if job.averages:
-                for average in job.averages:
+def get_job(foldername):
+    result_files = glob.glob(f"{os.path.join(helper.BASE_DIR, foldername)}/*.json")
+    first_file = result_files[0]
+    result_files.remove(first_file)
+    with open(first_file, "r") as first_file_open:
+        summed_job = Job(**json.loads(first_file_open.read()))
+        for file in result_files:
+            with open(file, "r") as file_open:
+                job_dict = json.loads(file_open.read())
+                job = Job(**job_dict)
+                if summed_job.averages and job.averages:
+                    summed_job.averages.extend(job.averages)
+                if summed_job.data_samples and job.data_samples:
+                    summed_job.data_samples.extend(job.data_samples)
+        
+        if summed_job.averages:
+            summed_job.averages = sorted(summed_job.averages, key=lambda val:val["time"])
+        if summed_job.data_samples:
+            summed_job.data_samples = sorted(summed_job.data_samples, key=lambda val:val["time"])
+        if SHIFT_SENDER_TIME_TO_FIRST_ADC and summed_job.type == "sender":
+            first_adc_time = get_first_adc_time(summed_job.data_samples)
+            if summed_job.averages:
+                for average in summed_job.averages:
                     average["time"] = average["time"] - first_adc_time
-            if job.data_samples:
-                for data_sample in job.data_samples:
+            if summed_job.data_samples:
+                for data_sample in summed_job.data_samples:
                     data_sample["time"] = data_sample["time"] - first_adc_time
             
-    return job
+    return summed_job
 
 def safe_cast(val, to_type, default=None):
     try:
@@ -48,8 +61,8 @@ def safe_cast(val, to_type, default=None):
     except (ValueError, TypeError):
         return default
 
-result_files = glob.glob("result-*.json")
-results = [Result(date=datetime.strptime(result_file[7:7+12], '%y%m%d%H%M%S'), node_uuid=result_file[25:25+36], job_uuid=result_file[66:66+36], run_uuid=result_file[107:107+36], job=get_job(result_file)) for result_file in result_files if len(result_file) >= 100]
+result_folders = glob.glob("result-*")
+results = [Result(date=datetime.strptime(result_folder[7:7+12], '%y%m%d%H%M%S'), node_uuid=result_folder[25:25+36], job_uuid=result_folder[66:66+36], run_uuid=result_folder[107:107+36], job=get_job(result_folder)) for result_folder in result_folders if len(result_folder) >= 100]
 result_groups: List[List[Result]] = []
 for result in results:
     result_group = [result]
