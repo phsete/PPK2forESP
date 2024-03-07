@@ -21,6 +21,7 @@ class Job(BaseModel):
     uuid: str
     version: str
     type: str
+    protocol: str
     sleep_mode: str
     power_save_mode: str
     started_at: float
@@ -118,13 +119,17 @@ def print_available_options(logger_version):
     if logger_version in available_logger_versions:
         available_options = get_available_options(logger_version, available_releases)
         print("Available Options:")
+        protocols = []
         sleep_modes = []
         power_save_modes = []
         for option_combination in available_options:
-            sleep_modes.append(option_combination["options"][0])
-            power_save_modes.append(option_combination["options"][1])
+            protocols.append(option_combination["options"][0])
+            sleep_modes.append(option_combination["options"][1])
+            power_save_modes.append(option_combination["options"][2])
+        protocols = list(dict.fromkeys(protocols))
         sleep_modes = list(dict.fromkeys(sleep_modes))
         power_save_modes = list(dict.fromkeys(power_save_modes))
+        print(f"Protocols: {protocols}")
         print(f"Sleep Modes: {sleep_modes}")
         print(f"Power Save Modes: {power_save_modes}")
         return True

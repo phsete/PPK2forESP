@@ -90,6 +90,7 @@ class Node:
             self.rendered_plot_once = False
             self.available_sleep_modes = []
             self.available_power_save_modes = []
+            self.protocol = None
             self.sleep_mode = None
             self.power_save_mode = None
         else:
@@ -106,12 +107,13 @@ class Node:
             self.rendered_plot_once = False
             self.available_sleep_modes = []
             self.available_power_save_modes = []
-            self.sleep_mode = strings[6]
-            self.power_save_mode = strings[7]
+            self.protocol = strings[6]
+            self.sleep_mode = strings[7]
+            self.power_save_mode = strings[8]
         self.plot_dialog = create_plot_dialog()
         version_select(self, self.logger_version_to_flash)
     def __str__(self) -> str:
-        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type},{self.sleep_mode},{self.power_save_mode})"
+        return f"({self.uuid},{self.name},{self.ip},{self.isPi},{self.logger_version_to_flash},{self.logger_type},{self.protocol},{self.sleep_mode},{self.power_save_mode})"
     def __repr__(self):
         return str(self)
     async def connect_to_device(self, button: ui.button):
@@ -137,12 +139,12 @@ class Node:
             try:
                 loop = asyncio.get_event_loop()
                 # print(f"Started test at NTP Time: {helper.get_ntp_time_in_ms()}")
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": f"{self.logger_version_to_flash}-{self.sleep_mode}-{self.power_save_mode}", "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/start", params={"version": f"{self.logger_version_to_flash}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode}", "node_type": self.logger_type}, timeout=10)) # missing: "version": self.logger_version_to_flash
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
                     latest_job_uuid = result["uuid"]
-                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000, sleep_mode=self.sleep_mode or "NO_SLEEP", power_save_mode=self.power_save_mode or "EXAMPLE_POWER_SAVE_NONE")
+                    self.jobs[latest_job_uuid] = Job(version=self.logger_version_to_flash, type=self.logger_type, uuid=str(latest_job_uuid), started_at=time.time() * 1000, protocol=self.protocol or "ESP_NOW" ,sleep_mode=self.sleep_mode or "NO_SLEEP", power_save_mode=self.power_save_mode or "EXAMPLE_POWER_SAVE_NONE")
                     print_and_notify(f"Node {self.name} started test successfully with status of '{result['status']}'", type='positive')
                     time.sleep(3)
                     future2 = loop.run_in_executor(None, lambda: requests.get(f"http://{self.ip}:{config['general']['APIPort']}/status/", params={"uuid": result["uuid"]}, timeout=10)) # missing: "version": self.logger_version_to_flash
@@ -175,9 +177,9 @@ class Node:
     async def flash(self, button: ui.button):
         with disable(button, "Flashing device"):
             try:
-                print_and_notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} and option {self.logger_type}-{self.sleep_mode}-{self.power_save_mode} ...")
+                print_and_notify(f"Node {self.name} trying to flash device with logger version {self.logger_version_to_flash} and option {self.logger_type}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode} ...")
                 loop = asyncio.get_event_loop()
-                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": f"{self.logger_type}-{self.sleep_mode}-{self.power_save_mode}"}, timeout=60))
+                future1 = loop.run_in_executor(None, lambda: requests.post(f"http://{self.ip}:{config['general']['APIPort']}/flash/", params={"version": self.logger_version_to_flash, "node_type": f"{self.logger_type}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode}"}, timeout=60))
                 response = await future1
                 result = response.json()
                 if result["status"] == "OK":

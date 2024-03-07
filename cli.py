@@ -115,9 +115,10 @@ def main():
                 available_logger_versions = [version["name"] for version in available_releases]
                 if node.version in available_logger_versions:
                     available_options = helper.get_available_options(node.version, available_releases)
-                    for option_combination in [available_option for available_option in available_options if re.search("sender-.*\.bin", available_option["asset"]["name"]) != None]:                   
-                        node.sleep_mode = option_combination["options"][0]
-                        node.power_save_mode = option_combination["options"][1]
+                    for option_combination in [available_option for available_option in available_options if re.search("sender-.*\.bin", available_option["asset"]["name"]) != None]:     
+                        node.protocol = option_combination["options"][0]              
+                        node.sleep_mode = option_combination["options"][1]
+                        node.power_save_mode = option_combination["options"][2]
                         node.flash()
                         
                         receiver.start_test()

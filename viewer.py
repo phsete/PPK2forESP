@@ -126,7 +126,7 @@ def get_total_power_cycle():
     all_cycle_powers : List[List[tuple[float, float, float]]] = []
     for i in range(len(selected_result_group)):
         if selected_result_group[i].job.type == "sender":
-            print(f"Options: {selected_result_group[i].job.sleep_mode}, {selected_result_group[i].job.power_save_mode}")        
+            print(f"Options: {selected_result_group[i].job.protocol}, {selected_result_group[i].job.sleep_mode}, {selected_result_group[i].job.power_save_mode}")        
             averages: List[Dict[str, float]] | None = selected_result_group[i].job.averages
             data_samples: List[Dict[str, str]] | None = selected_result_group[i].job.data_samples
             values: Dict[float, float] = {}
@@ -177,7 +177,7 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
     for result in [node for node in selected_result_group if node.job.type == "sender" or SHOW_RECEIVER_IN_PLOT]:
         power_index = 0
         if result.job.averages is not None and result.job.data_samples is not None:
-            fig.add_trace(go.Scatter(x=[x.get("time") for x in result.job.averages], y=[x.get("value") for x in result.job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{result.job.sleep_mode}, {result.job.power_save_mode}"))
+            fig.add_trace(go.Scatter(x=[x.get("time") for x in result.job.averages], y=[x.get("value") for x in result.job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}"))
             for data in result.job.data_samples:
                 if SHOW_EVENTS_IN_PLOT:
                     fig.add_vline(
@@ -193,7 +193,7 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
                             mAh, mWh, time = all_powers[j][power_index]
                             if (timestamp := data.get("time")) is not None:
                                 fig.add_annotation(x=timestamp + time * 500, y=5 + 10000 * i,
-                                    text=f"<b>Options: {result.job.sleep_mode}, {result.job.power_save_mode}</b><br><b>Cycle {power_index + 1}</b><br>{mWh} mWh<br>in {time} seconds",
+                                    text=f"<b>Options: {result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}</b><br><b>Cycle {power_index + 1}</b><br>{mWh} mWh<br>in {time} seconds",
                                     font=dict(color=plotly_colors.qualitative.Plotly[i]),
                                     xref='x', yref='y')
                                 power_index = power_index + 1
