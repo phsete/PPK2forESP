@@ -121,7 +121,8 @@ def main():
                         node.power_save_mode = option_combination["options"][2]
                         node.flash()
                         
-                        receiver.start_test()
+                        if not node.protocol == "WIFI":
+                            receiver.start_test()
                         node.start_test()
                         
                         loops: int = args.duration // args.interval # Floor Division
@@ -130,9 +131,13 @@ def main():
                             helper.print_colored(f"Getting Data {i+1}/{loops}", helper.Color.YELLOW)
                             for node in nodes:
                                 node.get_data()
+                            if not node.protocol == "WIFI":
+                                receiver.get_data()
                         
                         for node in nodes:
                             node.stop_test()
+                        if not node.protocol == "WIFI":
+                            receiver.stop_test()
                 else:
                     helper.print_available_versions()
         else:
