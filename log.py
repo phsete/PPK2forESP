@@ -125,9 +125,16 @@ def get_PPK2(i = 0) -> PPK2_API | None:
     ppk2 = None
     try:
         if((ppk2_port := helper.find_serial_device("PPK2")) == None):
-            log_status = "ERROR: No PPK2 device found!"
+            log_status = "ERROR: No PPK2 a device found!"
             print(log_status)
-            return
+            i = i + 1
+            print(i)
+            if i < 10:
+                print("Sleep")
+                time.sleep(1)
+                return get_PPK2(i)
+            else:
+                return
         ppk2 = PPK2_API(ppk2_port)
         ppk2.get_modifiers()
         ppk2.use_ampere_meter()

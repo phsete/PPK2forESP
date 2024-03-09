@@ -45,7 +45,7 @@ class SimpleNode:
     def start_test(self):
         try:
             version_param =  f"{self.version}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.version}"
-            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/start/", params={"version": version_param, "node_type": self.type}, timeout=5)
+            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/start/", params={"version": version_param, "node_type": self.type}, timeout=30)
             result = response.json()
             self.started_at = time.time()
             if result["status"] == "OK" or result["status"] == "started" or result["status"] == "created":
@@ -116,7 +116,7 @@ class SimpleNode:
             version_param =  f"{self.version}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.version}"
             type_param =  f"{self.type}-{self.protocol}-{self.sleep_mode}-{self.power_save_mode}" if self.type != "receiver" else f"{self.type}"
             print_colored(f"Node {self.name} trying to flash device with logger version {self.version} and option {version_param} ...", Color.YELLOW)
-            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/flash/", params={"version": self.version, "node_type": type_param}, timeout=60)
+            response = session.post(f"http://{self.ip}:{helper.config['general']['APIPort']}/flash/", params={"version": self.version, "node_type": type_param}, timeout=120)
             result = response.json()
             if result["status"] == "OK":
                 print_colored(f"Node {self.name} successfully flashed device ...", Color.GREEN)
