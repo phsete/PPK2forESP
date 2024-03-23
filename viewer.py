@@ -9,11 +9,14 @@ import plotly.graph_objects as go
 import plotly.colors as plotly_colors
 import os
 
-SHOW_EVENTS_IN_PLOT = False
+SHOW_EVENTS_IN_PLOT = True
 SHOW_POWER_IN_PLOT = True
 SHOW_RECEIVER_IN_PLOT = True
 
 SHIFT_SENDER_TIME_TO_FIRST_ADC = False
+SHIFT_SENDER_TIME_TO_FIRST_VALUE = False
+
+CYCLE_KEY_WORD = "Entering deep sleep\r\n"#"ADC_READ"
 
 class Result(BaseModel):
     date: datetime
@@ -39,6 +42,8 @@ def get_job(foldername):
                     summed_job.averages.extend(job.averages)
                 if summed_job.data_samples and job.data_samples:
                     summed_job.data_samples.extend(job.data_samples)
+                elif not summed_job.data_samples and job.data_samples:
+                    summed_job.data_samples = job.data_samples
         
         if summed_job.averages:
             summed_job.averages = sorted(summed_job.averages, key=lambda val:val["time"])
@@ -52,6 +57,14 @@ def get_job(foldername):
             if summed_job.data_samples:
                 for data_sample in summed_job.data_samples:
                     data_sample["time"] = data_sample["time"] - first_adc_time
+        elif SHIFT_SENDER_TIME_TO_FIRST_VALUE and summed_job.type == "sender":
+            if summed_job.averages:
+                first_adc_time = summed_job.averages[0]["time"]
+                for average in summed_job.averages:
+                    average["time"] = average["time"] - first_adc_time
+                if summed_job.data_samples:
+                    for data_sample in summed_job.data_samples:
+                        data_sample["time"] = data_sample["time"] - first_adc_time
             
     return summed_job
 
@@ -139,7 +152,7 @@ def get_total_power_cycle():
                     if (time := data.get("time")) and (value := data.get("value")):
                         events[float(time)] = value
                         
-            adc_reads = list(get_word_entries(events, "ADC_READ").keys())
+            adc_reads = list(get_word_entries(events, CYCLE_KEY_WORD).keys())
             total_power_mAh = 0
             cycle_powers: List[tuple[float, float, float]] = []
             for i in range(0, len(adc_reads)-1):
@@ -160,7 +173,7 @@ def get_total_power_cycle():
                     cycle_power_mAh = cycle_power_mAh + corrected_power_value_diff # mAh
                 cycle_power_mWh = cycle_power_mAh * 3.3 # mWh
                 cycle_powers.append((cycle_power_mAh, cycle_power_mWh, overall_time_diff))
-                print(f"Cycle {i+1}:", cycle_power_mAh, "mAh |", cycle_power_mWh, "mWh")
+                print(f"Cycle {i+1}:", cycle_power_mAh, "mAh |", cycle_power_mWh, "mWh | Average Power:", (cycle_power_mWh/(overall_time_diff/3600)), "mW / ", (cycle_power_mAh/(overall_time_diff/3600)), "mA over", overall_time_diff, "seconds")
                 total_power_mAh = total_power_mAh + cycle_power_mAh # mAh
             total_power_mWh = total_power_mAh * 3.3
             print("Total:", total_power_mAh, "mAh |", total_power_mWh, "mWh in", len(adc_reads) - 1, "full cycles")
