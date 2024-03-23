@@ -144,8 +144,8 @@ def main():
             # --- TEST ----
             for node in nodes:
                 node.ping()
-            for node in nodes:
-                node.flash()
+            # for node in nodes:
+            #     node.flash()
             for node in nodes:
                 node.start_test()
             

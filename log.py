@@ -64,11 +64,9 @@ def process_serial(line, node_type, version, latest_version, change_status, log_
             log_status = check_version(line, node_type, version, latest_version, change_status, log_status)
         case b'READ':
             pass
-        case b'ADC_' | b'RECV':
-            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8').strip().split(':')[1]))
-            calculate_values()
-        case _:
-            process_log_message(line)
+        case b'Wake' | b'Ente':
+            collected_data_samples.append((helper.get_corrected_time(), line.decode('utf-8')))
+            # calculate_values()
 
     return log_status
 
