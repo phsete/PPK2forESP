@@ -8,15 +8,18 @@ from typing import List, Dict
 import plotly.graph_objects as go
 import plotly.colors as plotly_colors
 import os
+import csv
+from uuid import uuid4
 
-SHOW_EVENTS_IN_PLOT = True
-SHOW_POWER_IN_PLOT = True
-SHOW_RECEIVER_IN_PLOT = True
+SHOW_EVENTS_IN_PLOT = False
+SHOW_POWER_IN_PLOT = False
+SHOW_RECEIVER_IN_PLOT = False
 
-SHIFT_SENDER_TIME_TO_FIRST_ADC = False
+SHIFT_SENDER_TIME_TO_FIRST_ADC = True
 SHIFT_SENDER_TIME_TO_FIRST_VALUE = False
 
-CYCLE_KEY_WORD = "Entering deep sleep\r\n"#"ADC_READ"
+CYCLE_KEY_WORD = "READY"
+OPTION_FILTERS = ["ESP_NOW", "DEEP_SLEEP"] # does not work for receiver in plot
 
 class Result(BaseModel):
     date: datetime
@@ -137,8 +140,10 @@ def get_word_entries(dict, keyword):
 
 def get_total_power_cycle():
     all_cycle_powers : List[List[tuple[float, float, float]]] = []
+    csv_uuid = uuid4()
     for i in range(len(selected_result_group)):
         if selected_result_group[i].job.type == "sender":
+            index = i
             print(f"Options: {selected_result_group[i].job.protocol}, {selected_result_group[i].job.sleep_mode}, {selected_result_group[i].job.power_save_mode}")        
             averages: List[Dict[str, float]] | None = selected_result_group[i].job.averages
             data_samples: List[Dict[str, str]] | None = selected_result_group[i].job.data_samples
@@ -154,6 +159,7 @@ def get_total_power_cycle():
                         
             adc_reads = list(get_word_entries(events, CYCLE_KEY_WORD).keys())
             total_power_mAh = 0
+            total_time = 0
             cycle_powers: List[tuple[float, float, float]] = []
             for i in range(0, len(adc_reads)-1):
                 cycle_power_mAh = 0
@@ -175,9 +181,19 @@ def get_total_power_cycle():
                 cycle_powers.append((cycle_power_mAh, cycle_power_mWh, overall_time_diff))
                 print(f"Cycle {i+1}:", cycle_power_mAh, "mAh |", cycle_power_mWh, "mWh | Average Power:", (cycle_power_mWh/(overall_time_diff/3600)), "mW / ", (cycle_power_mAh/(overall_time_diff/3600)), "mA over", overall_time_diff, "seconds")
                 total_power_mAh = total_power_mAh + cycle_power_mAh # mAh
+                total_time = total_time + overall_time_diff # s
             total_power_mWh = total_power_mAh * 3.3
             print("Total:", total_power_mAh, "mAh |", total_power_mWh, "mWh in", len(adc_reads) - 1, "full cycles")
             all_cycle_powers.append(cycle_powers)
+            file_exists = os.path.isfile(f'{csv_uuid}.csv')
+            row = [selected_result_group[index].job.protocol, selected_result_group[index].job.sleep_mode, selected_result_group[index].job.power_save_mode, total_power_mWh, len(adc_reads) - 1 ,total_time]
+            with open(f'{csv_uuid}.csv', 'a', newline='') as file:
+                writer = csv.writer(file)
+                if not file_exists:
+                    field = ["PROTOCOL", "SLEEP_MODE", "POWER_SAVE_MODE", "TOTAL_POWER", "CYCLE_COUNT", "TOTAL_TIME"]
+                    writer.writerow(field)
+                    
+                writer.writerow(row)
     return all_cycle_powers
 
 def show_plot(all_powers: List[List[tuple[float, float, float]]]):
@@ -188,33 +204,34 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
     i = 0
     j = 0
     for result in [node for node in selected_result_group if node.job.type == "sender" or SHOW_RECEIVER_IN_PLOT]:
-        power_index = 0
-        if result.job.averages is not None and result.job.data_samples is not None:
-            fig.add_trace(go.Scatter(x=[x.get("time") for x in result.job.averages], y=[x.get("value") for x in result.job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}"))
-            for data in result.job.data_samples:
-                if SHOW_EVENTS_IN_PLOT:
-                    fig.add_vline(
-                        x=data.get("time"), line_width=3, line_dash="dash", 
-                        line_color=plotly_colors.qualitative.Plotly[i],
-                        annotation=dict(
-                            text=f"{i}: {data.get('value')}",
-                            textangle=-90)
-                        )
-                if SHOW_POWER_IN_PLOT:
-                    if all_powers[j] is not None and data.get("value") == "ADC_READ":
-                        if power_index < len(all_powers[j]):
-                            mAh, mWh, time = all_powers[j][power_index]
-                            if (timestamp := data.get("time")) is not None:
-                                fig.add_annotation(x=timestamp + time * 500, y=5 + 10000 * i,
-                                    text=f"<b>Options: {result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}</b><br><b>Cycle {power_index + 1}</b><br>{mWh} mWh<br>in {time} seconds",
-                                    font=dict(color=plotly_colors.qualitative.Plotly[i]),
-                                    xref='x', yref='y')
-                                power_index = power_index + 1
-            i += 1
-            if result.job.type == "sender":
-                j += 1
-            if i > 9:
-                i = 0
+        if not OPTION_FILTERS or (result.job.protocol in OPTION_FILTERS and result.job.sleep_mode in OPTION_FILTERS):
+            power_index = 0
+            if result.job.averages is not None and result.job.data_samples is not None:
+                fig.add_trace(go.Scatter(x=[x.get("time") for x in result.job.averages], y=[x.get("value") for x in result.job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}"))
+                for data in result.job.data_samples:
+                    if SHOW_EVENTS_IN_PLOT:
+                        fig.add_vline(
+                            x=data.get("time"), line_width=3, line_dash="dash", 
+                            line_color=plotly_colors.qualitative.Plotly[i],
+                            annotation=dict(
+                                text=f"{i}: {data.get('value')}",
+                                textangle=-90)
+                            )
+                    if SHOW_POWER_IN_PLOT:
+                        if all_powers[j] is not None and data.get("value") == "ADC_READ":
+                            if power_index < len(all_powers[j]):
+                                mAh, mWh, time = all_powers[j][power_index]
+                                if (timestamp := data.get("time")) is not None:
+                                    fig.add_annotation(x=timestamp + time * 500, y=5 + 10000 * i,
+                                        text=f"<b>Options: {result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}</b><br><b>Cycle {power_index + 1}</b><br>{mWh} mWh<br>in {time} seconds",
+                                        font=dict(color=plotly_colors.qualitative.Plotly[i]),
+                                        xref='x', yref='y')
+                                    power_index = power_index + 1
+                i += 1
+                if result.job.type == "sender":
+                    j += 1
+                if i > 9:
+                    i = 0
     fig.show()
     
 show_plot(get_total_power_cycle())
