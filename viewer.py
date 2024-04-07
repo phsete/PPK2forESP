@@ -11,15 +11,15 @@ import os
 import csv
 from uuid import uuid4
 
-SHOW_EVENTS_IN_PLOT = False
-SHOW_POWER_IN_PLOT = False
+SHOW_EVENTS_IN_PLOT = True
+SHOW_POWER_IN_PLOT = True
 SHOW_RECEIVER_IN_PLOT = False
 
 SHIFT_SENDER_TIME_TO_FIRST_ADC = True
 SHIFT_SENDER_TIME_TO_FIRST_VALUE = False
 
 CYCLE_KEY_WORD = "READY"
-OPTION_FILTERS = ["ESP_NOW", "DEEP_SLEEP"] # does not work for receiver in plot
+OPTION_FILTERS = ["WIFI", "DEEP_SLEEP", "EXAMPLE_POWER_SAVE_NONE"] # does not work for receiver in plot
 
 class Result(BaseModel):
     date: datetime
@@ -204,8 +204,9 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
     i = 0
     j = 0
     for result in [node for node in selected_result_group if node.job.type == "sender" or SHOW_RECEIVER_IN_PLOT]:
-        if not OPTION_FILTERS or (result.job.protocol in OPTION_FILTERS and result.job.sleep_mode in OPTION_FILTERS):
+        if not OPTION_FILTERS or (result.job.protocol in OPTION_FILTERS and result.job.sleep_mode in OPTION_FILTERS and result.job.power_save_mode in OPTION_FILTERS):
             power_index = 0
+            j = [node for node in selected_result_group if node.job.type == "sender" or SHOW_RECEIVER_IN_PLOT].index(result)
             if result.job.averages is not None and result.job.data_samples is not None:
                 fig.add_trace(go.Scatter(x=[x.get("time") for x in result.job.averages], y=[x.get("value") for x in result.job.averages], line=dict(color=plotly_colors.qualitative.Plotly[i]), mode="lines", name=f"{result.job.protocol}, {result.job.sleep_mode}, {result.job.power_save_mode}"))
                 for data in result.job.data_samples:
@@ -218,6 +219,7 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
                                 textangle=-90)
                             )
                     if SHOW_POWER_IN_PLOT:
+                        print(j)
                         if all_powers[j] is not None and data.get("value") == "ADC_READ":
                             if power_index < len(all_powers[j]):
                                 mAh, mWh, time = all_powers[j][power_index]
@@ -228,8 +230,8 @@ def show_plot(all_powers: List[List[tuple[float, float, float]]]):
                                         xref='x', yref='y')
                                     power_index = power_index + 1
                 i += 1
-                if result.job.type == "sender":
-                    j += 1
+                # if result.job.type == "sender":
+                # j += 1
                 if i > 9:
                     i = 0
     fig.show()
