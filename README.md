@@ -34,7 +34,7 @@ Toolkit to measure power consumption and log events of ESP32 devices with Nordic
 * longer runs lead to a crash of the script running out of memory
 
 # Context
-The contents of this repository where created mainly during the creation of a master thesis at Technische Universität Dortmund - Fakultät für Informatik - Lehrstuhl für eingebettete Systeme, AG Systemsoftware (LS-12).
+The contents of this repository where created during the creation of a master thesis at Technische Universität Dortmund - Fakultät für Informatik - Lehrstuhl für eingebettete Systeme, AG Systemsoftware (LS-12).
 
 More details in german can be found under the title of the thesis: "Evaluation drahtloser Kommunikationsverfahren von eingebetteten Sensorknoten am Beispiel eines Bodenfeuchtesensors" (not yet available).
 
