@@ -80,8 +80,7 @@ def get_serial_device(device_signature: str):
     return serial_port
 
 def get_suitable_releases_with_asset(asset_name):
-    url = "https://api.github.com/repos/phsete/ESPNOWLogger/releases"
-    response = requests.get(url, headers={'Authorization': 'token ' + config["general.github"]["Token"]})
+    response = requests.get(config["general.github"]["Repository"], headers={'Authorization': 'token ' + config["general.github"]["Token"]})
     if response.status_code == 401:
         print("ERROR: PAT for github releases is not valid!")
         exit(1)
@@ -89,8 +88,7 @@ def get_suitable_releases_with_asset(asset_name):
     return suitable_releases
 
 def get_suitable_releases_with_asset_regex(asset_name_regex):
-    url = "https://api.github.com/repos/phsete/ESPNOWLogger/releases"
-    response = requests.get(url, headers={'Authorization': 'token ' + config["general.github"]["Token"]})
+    response = requests.get(config["general.github"]["Repository"], headers={'Authorization': 'token ' + config["general.github"]["Token"]})
     if response.status_code == 401:
         print("ERROR: PAT for github releases is not valid!")
         exit(1)

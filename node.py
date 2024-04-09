@@ -1,3 +1,5 @@
+# needs to be executed on a device, that has a PPK2 and a ESP32 conencted to it
+
 import asyncio
 import websockets
 import json

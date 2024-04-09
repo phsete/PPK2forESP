@@ -1,3 +1,10 @@
+# Needs to be executed on any device and does not have to have a PPK2 or ESP32 connected to it. For that purpose look at the node.py script.
+# Needs a valid nodes.save file with specified configurations.
+# Syntax of nodes.save: 1 Device per line: (UUID_OF_NODE[string],NODE_NAME[string],NODE_IP[string],CONNECTED_TO_PI[boolean],RELEASE_VERSION[string],TYPE[sender|receiver],PROTOCOL[string],SLEEP_MODE[string],POWER_SAVE_MODE[string])
+# Example: (d46c204b-b90a-4ef8-9b28-5a8f67021fef,Sensor,127.0.0.1,True,v0.2.8-f7c4323,sender,ESP_NOW,NO_SLEEP,EXAMPLE_POWER_SAVE_NONE)
+#
+# Also a valid config.toml file is needed. Especially a valid GitHub Repository and the respective Personal Access Token needs to be entered there. The Token must allow access to the Releases of the ESP-Firmware.
+
 import argparse
 import re
 import textwrap

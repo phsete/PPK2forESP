@@ -4,6 +4,7 @@ APIPort = 8000
 
 [general.github]
 Token = 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
+Repository = https://api.github.com/repos/phsete/ESPNOWLogger/releases
 
 [node]
 ESP32VidPid = 10c4:ea60

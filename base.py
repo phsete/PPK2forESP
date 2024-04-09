@@ -1,3 +1,5 @@
+# CURRENTLY OBSOLETE not compatible with newer versions of other scripts! 
+
 from nicegui import ui
 from typing import Any, Dict, Generator, List, Optional, Literal
 from uuid import UUID, uuid4
