@@ -1,5 +1,5 @@
 # PPK2 for ESP
-Toolkit to measure power consumption of ESP devices with Nordic Semiconductors PPK2
+Toolkit to measure power consumption and log events of ESP32 devices with Nordic Semiconductors PPK2.
 
 ## Usage
 ### Integrate a new Device that should be measured
@@ -18,6 +18,14 @@ Toolkit to measure power consumption of ESP devices with Nordic Semiconductors P
 
 ### Start Test
 1. Execute the `cli.py` script on any available device. If you need help with the syntax, simply call `cli.py --help` or `cli.py run --help`.
+
+### View Results
+1. Configure the options on the top of the viewer script.
+2. Execute the `viewer.py` script and make sure that the result files are in the same folder.
+3. Select a result group by entering the number stated in the output.
+4. The detailled power consumption of each cycle is printed in the log.
+5. A browser should open with an interactive graph of the results.
+> Hint: You can save a picture of the currently shown graph by clicking on the camera at the top right of the browser view.
 
 ## Known Bugs
 * _(currently not used)_ NTP request fails sometimes with:
