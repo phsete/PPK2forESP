@@ -11,15 +11,15 @@ import os
 import csv
 from uuid import uuid4
 
-SHOW_EVENTS_IN_PLOT = True
-SHOW_POWER_IN_PLOT = True
-SHOW_RECEIVER_IN_PLOT = False
+SHOW_EVENTS_IN_PLOT = False # if true shows information about every logged event in the web viewer
+SHOW_POWER_IN_PLOT = True # if true shows information about the power usage and time of each complete cycle in the web viewer
+SHOW_RECEIVER_IN_PLOT = False # if true shows the graph for a receiver in the web viewer if it is covered in the filters below
 
-SHIFT_SENDER_TIME_TO_FIRST_ADC = True
-SHIFT_SENDER_TIME_TO_FIRST_VALUE = False
+SHIFT_SENDER_TIME_TO_FIRST_ADC = True # if true shifts all time values to the first ADC Read event marked by ADC_READ
+SHIFT_SENDER_TIME_TO_FIRST_VALUE = False# if true sets the first time value of all selected results to the 0 mark
 
-CYCLE_KEY_WORD = "READY"
-OPTION_FILTERS = ["WIFI", "DEEP_SLEEP", "EXAMPLE_POWER_SAVE_NONE"] # does not work for receiver in plot
+CYCLE_KEY_WORD = "READY" # keyword for the cycle detection
+OPTION_FILTERS = ["WIFI", "DEEP_SLEEP", "EXAMPLE_POWER_SAVE_MIN_MODEM"] # protocol, sleep and power save mode filters for the available results, does not work for receiver in plot
 
 class Result(BaseModel):
     date: datetime
@@ -31,6 +31,7 @@ class Result(BaseModel):
 def get_first_adc_time(data_samples):
     return [data_sample for data_sample in data_samples if data_sample.get("value") == "ADC_READ"][0]["time"]
     
+# load all available result files in the specified directory and parse them
 def get_job(foldername):
     result_files = glob.glob(f"{os.path.join(helper.BASE_DIR, foldername)}/*.json")
     first_file = result_files[0]
@@ -77,6 +78,7 @@ def safe_cast(val, to_type, default=None):
     except (ValueError, TypeError):
         return default
 
+# find all result files with the correct name format
 result_folders = glob.glob("result-*")
 results = [Result(date=datetime.strptime(result_folder[7:7+12], '%y%m%d%H%M%S'), node_uuid=result_folder[25:25+36], job_uuid=result_folder[66:66+36], run_uuid=result_folder[107:107+36], job=get_job(result_folder)) for result_folder in result_folders if len(result_folder) >= 100]
 result_groups: List[List[Result]] = []
@@ -93,6 +95,7 @@ for result_group in result_groups:
     print(f"{i}: result group with run uuid {result_group[0].run_uuid} from {datetime.utcfromtimestamp(result_group[0].job.started_at).strftime('%y-%m-%d %H:%M:%S')}")
     i = i + 1
     
+# select a single result group for viewing
 selected_result_group: List[Result] = []
 while selected_result_group == []:
     input_selected = input("Select run data by entering number: ")
@@ -112,6 +115,7 @@ def get_sender_index(result_group: List[Result]):
             return i
     return None
     
+# calculate average power of result with specified index
 def calculate_average(index):
     averages: List[Dict[str, float]] | None = selected_result_group[index].job.averages
     values: List[float] = []
@@ -138,6 +142,7 @@ def get_float_range(dict, start, end):
 def get_word_entries(dict, keyword):
     return {key:dict[key] for key in dict.keys() if dict[key] == keyword}
 
+# get all information about the available results and their complete cycles marked by the set CYCLE_KEY_WORD
 def get_total_power_cycle():
     all_cycle_powers : List[List[tuple[float, float, float]]] = []
     csv_uuid = uuid4()
@@ -196,6 +201,7 @@ def get_total_power_cycle():
                 writer.writerow(row)
     return all_cycle_powers
 
+# show all selected plots in a interactive web viewer
 def show_plot(all_powers: List[List[tuple[float, float, float]]]):
     fig = go.Figure()
     fig.update_layout(legend_title_text="Jobs", title=selected_result_group[0].run_uuid)
